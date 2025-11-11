@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}PersonaChat{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-content">
+        <a class="brand" href="{{ url_for('main.index') }}">PersonaChat</a>
+        <nav class="nav-links">
+          <a href="{{ url_for('main.index') }}">Home</a>
+          <a href="{{ url_for('main.application') }}">Application</a>
+          {% if user %}
+            <span class="nav-email">{{ user.email }}</span>
+            <a href="{{ url_for('main.logout') }}">Logout</a>
+          {% else %}
+            <a href="{{ url_for('main.login') }}">Login</a>
+            <a class="btn" href="{{ url_for('main.register') }}">Register</a>
+          {% endif %}
+        </nav>
+      </div>
+    </header>
+
+    <main class="container content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-wrapper">
+            {% for category, message in messages %}
+              <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <p>PersonaChat &copy; {{ current_year }}</p>
+      </div>
+    </footer>
+  </body>
+</html>

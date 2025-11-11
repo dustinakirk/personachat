@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Welcome{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <h1>Bring your persona-powered assistant to life.</h1>
+    <p>Create narratives, manage sessions, and tap into Google Gemini through a streamlined Flask interface.</p>
+    <div class="hero-actions">
+      {% if user %}
+        <a class="btn" href="{{ url_for('main.application') }}">Open Application</a>
+      {% else %}
+        <a class="btn" href="{{ url_for('main.register') }}">Get Started</a>
+        <a class="btn-secondary" href="{{ url_for('main.login') }}">Log In</a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="features">
+  <article>
+    <h2>Vercel Ready</h2>
+    <p>Serverless entrypoint configured for Vercel&apos;s Python runtime so you can deploy instantly.</p>
+  </article>
+  <article>
+    <h2>Supabase Auth</h2>
+    <p>User registration and login are wired to Supabase, keeping credentials outside the app.</p>
+  </article>
+  <article>
+    <h2>Gemini API</h2>
+    <p>Call Google&apos;s Gemini model with a single prompt to kickstart conversational experiences.</p>
+  </article>
+</section>
+{% endblock %}

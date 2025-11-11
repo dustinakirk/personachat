@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Application{% endblock %}
+{% block content %}
+<section class="panel">
+  <header>
+    <h1>Gemini Playground</h1>
+    <p>Submit a persona prompt. Responses stream back from the Gemini API.</p>
+  </header>
+
+  {% if not gemini_ready %}
+    <div class="callout warning">Gemini is not configured yet. Set GEMINI_API_KEY to enable this form.</div>
+  {% endif %}
+
+  <form class="prompt-form" method="post">
+    <label for="prompt">Prompt</label>
+    <textarea id="prompt" name="prompt" rows="6" placeholder="Describe the persona or question..." required>{{ prompt }}</textarea>
+    <button class="btn" type="submit" {% if not gemini_ready %}disabled{% endif %}>Send to Gemini</button>
+  </form>
+
+  {% if gemini_response %}
+    <section class="response">
+      <h2>Gemini Response</h2>
+      <div class="response-body">{{ gemini_response }}</div>
+    </section>
+  {% endif %}
+
+  {% if conversations %}
+    <section class="conversation-history">
+      <h2>Conversation History</h2>
+      <div class="conversations">
+        {% for conversation in conversations %}
+          <div class="conversation-item">
+            <div class="conversation-meta">
+              <span class="timestamp">{{ conversation.created_at }}</span>
+            </div>
+            <div class="conversation-prompt">
+              <strong>You:</strong> {{ conversation.prompt }}
+            </div>
+            <div class="conversation-response">
+              <strong>Gemini:</strong> {{ conversation.response }}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+</section>
+{% endblock %}
