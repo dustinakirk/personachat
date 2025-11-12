@@ -4,6 +4,7 @@ from functools import wraps
 
 from flask import (
     Blueprint,
+    Response,
     current_app,
     flash,
     redirect,
@@ -29,7 +30,35 @@ def login_required(view_func):
 
 @main_bp.route("/")
 def index():
-    return render_template("index.html", user=session.get("user"))
+    user = session.get("user")
+
+    # If logged in, show dashboard
+    if user:
+        user_id = user.get("id")
+
+        # Get recent conversations
+        conversations = []
+        if current_app.conversation_service:
+            conv_result = current_app.conversation_service.get_user_conversations(user_id, limit=5)
+            if conv_result.success:
+                conversations = conv_result.data.get("conversations", [])
+
+        # Get persona count
+        persona_count = 0
+        if current_app.persona_service:
+            personas_result = current_app.persona_service.get_personas(user_id)
+            if personas_result.success:
+                persona_count = len(personas_result.data.get("personas", []))
+
+        return render_template(
+            "dashboard.html",
+            user=user,
+            conversations=conversations,
+            persona_count=persona_count
+        )
+
+    # If not logged in, show landing page
+    return render_template("index.html", user=user)
 
 
 @main_bp.route("/application", methods=["GET", "POST"])
@@ -37,6 +66,7 @@ def index():
 def application():
     prompt = ""
     gemini_response = None
+    selected_model = None
     user = session.get("user")
     user_id = user.get("id") if user else None
 
@@ -49,9 +79,13 @@ def application():
 
     if request.method == "POST":
         prompt = request.form.get("prompt", "")
+        selected_model = request.form.get("model", None)
 
-        try:
-            gemini_response = current_app.gemini_service.generate_response(prompt)
+        # Generate response using new GeminiResult pattern
+        result = current_app.gemini_service.generate_response(prompt, model=selected_model)
+
+        if result.success:
+            gemini_response = result.data
 
             # Save conversation to database
             if user_id and gemini_response:
@@ -65,8 +99,8 @@ def application():
                         conversations = history_result.data.get("conversations", [])
                 else:
                     flash(f"Conversation saved to session only: {save_result.error}", "warning")
-        except Exception as exc:  # pylint: disable=broad-except
-            flash(str(exc), "error")
+        else:
+            flash(result.error, "error")
 
     return render_template(
         "application.html",
@@ -74,8 +108,49 @@ def application():
         prompt=prompt,
         gemini_response=gemini_response,
         gemini_ready=current_app.gemini_service.is_configured,
+        available_models=current_app.gemini_service.available_models,
+        default_model=current_app.gemini_service.default_model,
         conversations=conversations,
     )
+
+
+@main_bp.route("/stream", methods=["POST"])
+@login_required
+def stream():
+    """Server-Sent Events endpoint for streaming Gemini responses."""
+    prompt = request.json.get("prompt", "")
+    selected_model = request.json.get("model", None)
+    user = session.get("user")
+    user_id = user.get("id") if user else None
+
+    if not prompt.strip():
+        return Response("data: {\"error\": \"Empty prompt\"}\n\n", mimetype="text/event-stream")
+
+    def generate():
+        """Generator function for SSE streaming."""
+        full_response = ""
+
+        try:
+            for chunk in current_app.gemini_service.generate_streaming_response(prompt, model=selected_model):
+                full_response += chunk
+                # Send chunk in SSE format
+                yield f"data: {chunk}\n\n"
+
+            # After streaming completes, save to database
+            if user_id and full_response:
+                save_result = current_app.supabase_service.save_conversation(
+                    user_id, prompt, full_response
+                )
+                if not save_result.success:
+                    yield f"data: [ERROR: Failed to save conversation]\n\n"
+
+            # Send completion signal
+            yield "data: [DONE]\n\n"
+
+        except Exception as e:
+            yield f"data: [ERROR: {str(e)}]\n\n"
+
+    return Response(generate(), mimetype="text/event-stream")
 
 
 @main_bp.route("/register", methods=["GET", "POST"])

@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Persona - PersonaChat{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>Edit Persona</h1>
+    </div>
+
+    <div class="edit-card">
+        <form method="POST" action="{{ url_for('personas.edit', persona_id=persona.id) }}">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="name">Name: *</label>
+                    <input type="text" name="name" id="name" class="form-control" value="{{ persona.name }}" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="role">Role/Title:</label>
+                    <input type="text" name="role" id="role" class="form-control" value="{{ persona.role or '' }}">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="company">Company/Context:</label>
+                    <input type="text" name="company" id="company" class="form-control" value="{{ persona.company or '' }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="age_stage">Age/Stage:</label>
+                    <input type="text" name="age_stage" id="age_stage" class="form-control" value="{{ persona.age_stage or '' }}">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="group_id">Persona Group:</label>
+                <select name="group_id" id="group_id" class="form-control">
+                    <option value="">No Group</option>
+                    {% for group in groups %}
+                    <option value="{{ group.id }}" {% if persona.group_id == group.id %}selected{% endif %}>
+                        {{ group.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Goals:</label>
+                <div id="goals-container">
+                    {% for goal in persona.goals %}
+                    <input type="text" name="goals[]" class="form-control mb-2" value="{{ goal }}">
+                    {% endfor %}
+                    {% if persona.goals|length == 0 %}
+                    <input type="text" name="goals[]" class="form-control mb-2" placeholder="Goal 1">
+                    <input type="text" name="goals[]" class="form-control mb-2" placeholder="Goal 2">
+                    <input type="text" name="goals[]" class="form-control mb-2" placeholder="Goal 3">
+                    {% endif %}
+                </div>
+                <button type="button" class="btn-link" onclick="addGoal()">+ Add Goal</button>
+            </div>
+
+            <div class="form-group">
+                <label>Pain Points:</label>
+                <div id="pains-container">
+                    {% for pain in persona.pains %}
+                    <input type="text" name="pains[]" class="form-control mb-2" value="{{ pain }}">
+                    {% endfor %}
+                    {% if persona.pains|length == 0 %}
+                    <input type="text" name="pains[]" class="form-control mb-2" placeholder="Pain point 1">
+                    <input type="text" name="pains[]" class="form-control mb-2" placeholder="Pain point 2">
+                    <input type="text" name="pains[]" class="form-control mb-2" placeholder="Pain point 3">
+                    {% endif %}
+                </div>
+                <button type="button" class="btn-link" onclick="addPain()">+ Add Pain Point</button>
+            </div>
+
+            <div class="form-group">
+                <label for="behaviors">Behaviors & Traits:</label>
+                <textarea name="behaviors" id="behaviors" rows="3" class="form-control">{{ persona.behaviors or '' }}</textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="tools">Tools & Systems:</label>
+                <input type="text" name="tools" id="tools" class="form-control" value="{{ persona.tools or '' }}">
+            </div>
+
+            <div class="form-group">
+                <label>Typical Quotes:</label>
+                <div id="quotes-container">
+                    {% for quote in persona.quotes %}
+                    <input type="text" name="quotes[]" class="form-control mb-2" value="{{ quote }}">
+                    {% endfor %}
+                    {% if persona.quotes|length == 0 %}
+                    <input type="text" name="quotes[]" class="form-control mb-2" placeholder="A typical phrase">
+                    {% endif %}
+                </div>
+                <button type="button" class="btn-link" onclick="addQuote()">+ Add Quote</button>
+            </div>
+
+            <div class="form-group">
+                <label for="tags">Tags (comma-separated):</label>
+                <input type="text" name="tags" id="tags" class="form-control" value="{{ persona.tags|join(', ') if persona.tags else '' }}">
+            </div>
+
+            <div class="form-group">
+                <label for="notes">Notes:</label>
+                <textarea name="notes" id="notes" rows="3" class="form-control" placeholder="Additional notes about this persona">{{ persona.notes or '' }}</textarea>
+            </div>
+
+            <div class="form-actions">
+                <a href="{{ url_for('personas.library') }}" class="btn btn-secondary">Cancel</a>
+                <button type="button" class="btn btn-danger" onclick="confirmDelete()">Delete Persona</button>
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.edit-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.form-control {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 1rem;
+    font-family: inherit;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+textarea.form-control {
+    resize: vertical;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.mb-2 {
+    margin-bottom: 0.5rem;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 0;
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+}
+
+.btn-link:hover {
+    text-decoration: underline;
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+}
+
+.btn-danger {
+    background: #ef4444;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+</style>
+
+<script>
+function addGoal() {
+    const container = document.getElementById('goals-container');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'goals[]';
+    input.className = 'form-control mb-2';
+    input.placeholder = 'New goal';
+    container.appendChild(input);
+}
+
+function addPain() {
+    const container = document.getElementById('pains-container');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'pains[]';
+    input.className = 'form-control mb-2';
+    input.placeholder = 'New pain point';
+    container.appendChild(input);
+}
+
+function addQuote() {
+    const container = document.getElementById('quotes-container');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'quotes[]';
+    input.className = 'form-control mb-2';
+    input.placeholder = 'New quote';
+    container.appendChild(input);
+}
+
+async function confirmDelete() {
+    if (!confirm('Are you sure you want to permanently delete this persona? This action cannot be undone.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/personas/{{ persona.id }}/delete`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            window.location.href = '{{ url_for("personas.library") }}';
+        } else {
+            alert('Error deleting persona: ' + data.error);
+        }
+    } catch (error) {
+        alert('Error deleting persona: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,43 @@
+name: Run Supabase Migrations
+
+# Trigger: Runs automatically when migration files change on main branch
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/migrations/**'
+  # Also allow manual triggering via GitHub Actions UI
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    name: Apply Database Migrations
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link to Supabase project
+        run: |
+          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Run migrations
+        run: |
+          echo "Running migrations against production database..."
+          supabase db push --linked
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Verify migration success
+        run: |
+          echo "✅ Migrations completed successfully!"
+          echo "Database schema has been updated."

@@ -31,10 +31,48 @@ A Flask starter kit prepared for Vercel that uses Supabase for authentication/st
    ```
    The app listens on `http://127.0.0.1:8000` by default.
 
-## Supabase Notes
-- Create a Supabase project and enable email/password authentication.
-- The starter uses `supabase.auth.sign_up` and `sign_in_with_password`—no custom tables required yet.
-- For production, consider moving to service-role keys for server-side operations and storing user metadata in tables.
+## Supabase Setup
+
+### Database Migrations
+This project uses Supabase CLI for automated database migrations:
+
+1. **Initial Setup** (One-time)
+   - Ensure you have the Supabase CLI installed: `brew install supabase/tap/supabase`
+   - Get your Supabase Access Token:
+     1. Go to https://supabase.com/dashboard/account/tokens
+     2. Generate a new access token
+     3. Add it to your GitHub repository secrets as `SUPABASE_ACCESS_TOKEN`
+   - Add your project reference to GitHub secrets as `SUPABASE_PROJECT_REF` (value: `jzinycxsxveexsghzcob`)
+
+2. **Automated Migrations** (On Push to Main)
+   - When you push changes to `supabase/migrations/**` on the main branch, GitHub Actions automatically:
+     - Links to your Supabase project
+     - Applies any new migration files
+     - Verifies the migration succeeded
+   - View migration status in the "Actions" tab of your GitHub repository
+
+3. **Creating New Migrations**
+   ```bash
+   # Create a new migration file
+   supabase migration new <migration_name>
+
+   # Edit the generated file in supabase/migrations/
+   # Then commit and push to trigger automated deployment
+   ```
+
+4. **Manual Migration** (If Needed)
+   ```bash
+   # Link to your project (one-time)
+   supabase link --project-ref jzinycxsxveexsghzcob
+
+   # Apply migrations manually
+   supabase db push
+   ```
+
+### Authentication
+- Create a Supabase project and enable email/password authentication
+- The app uses `supabase.auth.sign_up` and `sign_in_with_password`
+- User data is stored in custom tables (see schema in `supabase/migrations/`)
 
 ## Gemini Notes
 - Enable the Google Generative AI API and create an API key in Google AI Studio.

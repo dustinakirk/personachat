@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block title %}Create Persona - PersonaChat{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>Create New Persona</h1>
+    </div>
+
+    {% if not enrichment %}
+    <!-- Step 1: Free-form Description -->
+    <div class="creation-card">
+        <h2>Describe Your Persona</h2>
+        <p class="help-text">
+            Enter anything you know about this persona - their role, goals, challenges, company, or any other details.
+            Our AI will create a structured profile that you can edit before saving.
+        </p>
+
+        <form method="POST" action="{{ url_for('personas.create') }}">
+            <div class="form-group">
+                <label for="group_id">Persona Group (Optional):</label>
+                <select name="group_id" id="group_id" class="form-control">
+                    <option value="">No Group</option>
+                    {% for group in groups %}
+                    <option value="{{ group.id }}">{{ group.name }}</option>
+                    {% endfor %}
+                </select>
+                <button type="button" class="btn-link" onclick="createNewGroup()">+ Create New Group</button>
+            </div>
+
+            <div class="form-group">
+                <label for="description">Persona Description:</label>
+                <textarea
+                    name="description"
+                    id="description"
+                    rows="6"
+                    class="form-control"
+                    placeholder="Example: Sarah Chen is a product manager at a SaaS startup. She's responsible for prioritizing features and struggles with competing stakeholder demands. She uses Jira and Figma daily."
+                    required
+                >{{ description }}</textarea>
+            </div>
+
+            <div class="form-actions">
+                <a href="{{ url_for('personas.library') }}" class="btn btn-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary">Generate Persona Profile</button>
+            </div>
+        </form>
+    </div>
+
+    {% else %}
+    <!-- Step 2: Edit AI-Generated Profile -->
+    <div class="creation-card">
+        <h2>Review & Edit Persona Profile</h2>
+        <p class="help-text">
+            Our AI has generated a structured profile. Review and edit any fields before saving.
+        </p>
+
+        <form method="POST" action="{{ url_for('personas.save') }}">
+            <input type="hidden" name="group_id" value="{{ group_id }}">
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="name">Name: *</label>
+                    <input type="text" name="name" id="name" class="form-control" value="{{ enrichment.name }}" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="role">Role/Title:</label>
+                    <input type="text" name="role" id="role" class="form-control" value="{{ enrichment.role }}">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="company">Company/Context:</label>
+                    <input type="text" name="company" id="company" class="form-control" value="{{ enrichment.company or '' }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="age_stage">Age/Stage:</label>
+                    <input type="text" name="age_stage" id="age_stage" class="form-control" value="{{ enrichment.age_stage or '' }}" placeholder="e.g., '30s', 'early career'">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Goals (3):</label>
+                <div id="goals-container">
+                    {% for goal in enrichment.goals %}
+                    <input type="text" name="goals[]" class="form-control mb-2" value="{{ goal }}">
+                    {% endfor %}
+                    {% for i in range(enrichment.goals|length, 3) %}
+                    <input type="text" name="goals[]" class="form-control mb-2" placeholder="Goal {{ i + 1 }}">
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Pain Points (3):</label>
+                <div id="pains-container">
+                    {% for pain in enrichment.pains %}
+                    <input type="text" name="pains[]" class="form-control mb-2" value="{{ pain }}">
+                    {% endfor %}
+                    {% for i in range(enrichment.pains|length, 3) %}
+                    <input type="text" name="pains[]" class="form-control mb-2" placeholder="Pain point {{ i + 1 }}">
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="behaviors">Behaviors & Traits:</label>
+                <textarea name="behaviors" id="behaviors" rows="3" class="form-control">{{ enrichment.behaviors or '' }}</textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="tools">Tools & Systems:</label>
+                <input type="text" name="tools" id="tools" class="form-control" value="{{ enrichment.tools or '' }}" placeholder="e.g., Jira, Figma, Slack">
+            </div>
+
+            <div class="form-group">
+                <label>Typical Quotes (1-2):</label>
+                <div id="quotes-container">
+                    {% for quote in enrichment.quotes %}
+                    <input type="text" name="quotes[]" class="form-control mb-2" value="{{ quote }}">
+                    {% endfor %}
+                    {% if enrichment.quotes|length == 0 %}
+                    <input type="text" name="quotes[]" class="form-control mb-2" placeholder="A phrase that captures their mindset">
+                    {% endif %}
+                </div>
+                <button type="button" class="btn-link" onclick="addQuote()">+ Add Another Quote</button>
+            </div>
+
+            <div class="form-group">
+                <label for="tags">Tags (comma-separated):</label>
+                <input type="text" name="tags" id="tags" class="form-control" value="{{ enrichment.tags|join(', ') }}" placeholder="e.g., product, startup, technical">
+            </div>
+
+            <div class="form-actions">
+                <a href="{{ url_for('personas.library') }}" class="btn btn-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary">Save Persona</button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.creation-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.creation-card h2 {
+    margin-bottom: 0.5rem;
+}
+
+.help-text {
+    color: var(--text-dim);
+    margin-bottom: 2rem;
+    line-height: 1.6;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.form-control {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 1rem;
+    font-family: inherit;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+textarea.form-control {
+    resize: vertical;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.mb-2 {
+    margin-bottom: 0.5rem;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 0;
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+}
+
+.btn-link:hover {
+    text-decoration: underline;
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+}
+</style>
+
+<script>
+function addQuote() {
+    const container = document.getElementById('quotes-container');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'quotes[]';
+    input.className = 'form-control mb-2';
+    input.placeholder = 'Another typical phrase';
+    container.appendChild(input);
+}
+
+async function createNewGroup() {
+    const name = prompt('Enter new group name:');
+    if (!name) return;
+
+    try {
+        const response = await fetch('/personas/groups/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: `name=${encodeURIComponent(name)}`
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Add to dropdown
+            const select = document.getElementById('group_id');
+            const option = document.createElement('option');
+            option.value = data.group.id;
+            option.textContent = data.group.name;
+            option.selected = true;
+            select.appendChild(option);
+        } else {
+            alert('Error creating group: ' + data.error);
+        }
+    } catch (error) {
+        alert('Error creating group: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

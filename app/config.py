@@ -12,6 +12,8 @@ class Config:
     SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
     SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+    GEMINI_DEFAULT_MODEL = os.environ.get("GEMINI_DEFAULT_MODEL", "gemini-2.5-flash")
+    GEMINI_SYSTEM_INSTRUCTION = os.environ.get("GEMINI_SYSTEM_INSTRUCTION", "")
     APP_URL = os.environ.get("APP_URL", "http://127.0.0.1:8000")
     SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
     SESSION_COOKIE_HTTPONLY = True

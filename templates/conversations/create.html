@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block title %}New Conversation - PersonaChat{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>Start a New Conversation</h1>
+    </div>
+
+    <div class="creation-card">
+        <h2>Select Participants</h2>
+        <p class="help-text">
+            Choose 1-5 personas to participate in this conversation. They'll respond based on their expertise and perspectives.
+        </p>
+
+        {% if personas %}
+        <form method="POST" action="{{ url_for('conversations.create') }}" id="create-form">
+            <div class="personas-selection">
+                {% for persona in personas %}
+                <label class="persona-selector">
+                    <input
+                        type="checkbox"
+                        name="participant_ids"
+                        value="{{ persona.id }}"
+                        onchange="updateSelection()"
+                    >
+                    <div class="persona-info">
+                        <div class="persona-name">{{ persona.name }}</div>
+                        <div class="persona-role">{{ persona.role or 'No role' }}</div>
+                        {% if persona.company %}
+                        <div class="persona-company">{{ persona.company }}</div>
+                        {% endif %}
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+
+            <div class="selection-summary" id="selection-summary">
+                <span id="selection-count">0</span> persona(s) selected (max 5)
+            </div>
+
+            <div class="form-actions">
+                <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary" id="start-btn" disabled>
+                    Start Conversation
+                </button>
+            </div>
+        </form>
+
+        {% else %}
+        <div class="empty-state">
+            <h3>No personas available</h3>
+            <p>You need to create at least one persona before starting a conversation.</p>
+            <a href="{{ url_for('personas.create') }}" class="btn btn-primary">Create a Persona</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.creation-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.creation-card h2 {
+    margin-bottom: 0.5rem;
+}
+
+.help-text {
+    color: var(--text-dim);
+    margin-bottom: 2rem;
+    line-height: 1.6;
+}
+
+.personas-selection {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.persona-selector {
+    display: flex;
+    gap: 1rem;
+    align-items: start;
+    padding: 1rem;
+    background: var(--bg);
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.persona-selector:hover {
+    border-color: var(--accent);
+}
+
+.persona-selector input[type="checkbox"] {
+    margin-top: 0.25rem;
+    cursor: pointer;
+}
+
+.persona-selector input[type="checkbox"]:checked ~ .persona-info {
+    color: var(--accent);
+}
+
+.persona-selector:has(input:checked) {
+    border-color: var(--accent);
+    background: rgba(92, 124, 250, 0.1);
+}
+
+.persona-info {
+    flex: 1;
+}
+
+.persona-name {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.persona-role {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+}
+
+.persona-company {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin-top: 0.25rem;
+}
+
+.selection-summary {
+    background: var(--bg);
+    padding: 1rem;
+    border-radius: 6px;
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+#selection-count {
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+}
+
+.empty-state h3 {
+    margin-bottom: 1rem;
+}
+
+.empty-state p {
+    color: var(--text-dim);
+    margin-bottom: 2rem;
+}
+</style>
+
+<script>
+function updateSelection() {
+    const checkboxes = document.querySelectorAll('input[name="participant_ids"]:checked');
+    const count = checkboxes.length;
+    const startBtn = document.getElementById('start-btn');
+    const countSpan = document.getElementById('selection-count');
+
+    countSpan.textContent = count;
+
+    if (count > 0 && count <= 5) {
+        startBtn.disabled = false;
+    } else {
+        startBtn.disabled = true;
+    }
+
+    if (count > 5) {
+        alert('You can select a maximum of 5 personas.');
+        // Uncheck the last checked box
+        checkboxes[count - 1].checked = false;
+        updateSelection(); // Recursive call to update count
+    }
+}
+</script>
+{% endblock %}

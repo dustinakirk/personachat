@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - PersonaChat{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <div class="welcome-section">
+        <h1>Welcome back, {{ user.email.split('@')[0] }}!</h1>
+        <p class="welcome-text">Explore multi-persona conversations and build your persona network.</p>
+    </div>
+
+    <div class="dashboard-grid">
+        <!-- Quick Actions -->
+        <div class="dashboard-card quick-actions">
+            <h2>Quick Actions</h2>
+            <div class="action-buttons">
+                <a href="{{ url_for('personas.create') }}" class="action-btn">
+                    <i class="icon-user-plus"></i>
+                    <span>Create Persona</span>
+                </a>
+                <a href="{{ url_for('conversations.create') }}" class="action-btn">
+                    <i class="icon-message-circle"></i>
+                    <span>Start Conversation</span>
+                </a>
+                <a href="{{ url_for('network.view') }}" class="action-btn">
+                    <i class="icon-share-2"></i>
+                    <span>View Network</span>
+                </a>
+                <a href="{{ url_for('personas.library') }}" class="action-btn">
+                    <i class="icon-grid"></i>
+                    <span>Persona Library</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="dashboard-card stats-card">
+            <h2>Your Activity</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value">{{ persona_count }}</div>
+                    <div class="stat-label">Personas</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ conversations|length }}</div>
+                    <div class="stat-label">Recent Chats</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Conversations -->
+        <div class="dashboard-card recent-conversations">
+            <div class="card-header">
+                <h2>Recent Conversations</h2>
+                <a href="{{ url_for('conversations.list_conversations') }}" class="view-all">View All</a>
+            </div>
+
+            {% if conversations %}
+            <div class="conversations-list">
+                {% for conversation in conversations %}
+                <a href="{{ url_for('conversations.chat', conversation_id=conversation.id) }}" class="conversation-item">
+                    <div class="conversation-title">
+                        {{ conversation.title or 'Untitled Conversation' }}
+                    </div>
+                    <div class="conversation-meta">
+                        {{ conversation.updated_at.strftime('%b %d') if conversation.updated_at else 'Never' }}
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-message">
+                <p>No conversations yet. <a href="{{ url_for('conversations.create') }}">Start your first conversation</a></p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Getting Started (if no personas) -->
+        {% if persona_count == 0 %}
+        <div class="dashboard-card getting-started">
+            <h2>Getting Started</h2>
+            <ol class="steps-list">
+                <li>
+                    <strong>Create personas</strong> - Describe people from your professional or personal life
+                </li>
+                <li>
+                    <strong>Build your network</strong> - Add related personas to create connections
+                </li>
+                <li>
+                    <strong>Start conversations</strong> - Chat with multiple personas to explore perspectives
+                </li>
+            </ol>
+            <a href="{{ url_for('personas.create') }}" class="btn btn-primary">Create Your First Persona</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.dashboard-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.welcome-section {
+    margin-bottom: 2rem;
+}
+
+.welcome-section h1 {
+    margin: 0 0 0.5rem 0;
+}
+
+.welcome-text {
+    color: var(--text-dim);
+    font-size: 1.1rem;
+}
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+}
+
+.dashboard-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.dashboard-card h2 {
+    margin: 0 0 1.5rem 0;
+    font-size: 1.2rem;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.card-header h2 {
+    margin: 0;
+}
+
+.view-all {
+    color: var(--accent);
+    font-size: 0.9rem;
+    text-decoration: none;
+}
+
+.view-all:hover {
+    text-decoration: underline;
+}
+
+.quick-actions {
+    grid-column: span 1;
+}
+
+.action-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1.5rem 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    text-decoration: none;
+    color: var(--text);
+    transition: all 0.2s;
+}
+
+.action-btn:hover {
+    border-color: var(--accent);
+    background: rgba(92, 124, 250, 0.1);
+    transform: translateY(-2px);
+}
+
+.action-btn i {
+    font-size: 1.5rem;
+    color: var(--accent);
+}
+
+.action-btn span {
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.stats-card {
+    grid-column: span 1;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+.stat-item {
+    text-align: center;
+    padding: 1rem;
+    background: var(--bg);
+    border-radius: 6px;
+}
+
+.stat-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 0.5rem;
+}
+
+.stat-label {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+}
+
+.recent-conversations {
+    grid-column: span 2;
+}
+
+.conversations-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.conversation-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    text-decoration: none;
+    color: var(--text);
+    transition: all 0.2s;
+}
+
+.conversation-item:hover {
+    border-color: var(--accent);
+    transform: translateX(4px);
+}
+
+.conversation-title {
+    font-weight: 500;
+}
+
+.conversation-meta {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+}
+
+.empty-message {
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-dim);
+}
+
+.empty-message a {
+    color: var(--accent);
+}
+
+.getting-started {
+    grid-column: span 2;
+}
+
+.steps-list {
+    margin: 0 0 1.5rem 0;
+    padding-left: 1.5rem;
+    line-height: 1.8;
+}
+
+.steps-list li {
+    margin-bottom: 0.75rem;
+}
+
+.steps-list strong {
+    color: var(--accent);
+}
+
+@media (max-width: 768px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .recent-conversations,
+    .getting-started {
+        grid-column: span 1;
+    }
+
+    .action-buttons {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}

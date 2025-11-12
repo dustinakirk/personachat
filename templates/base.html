@@ -12,8 +12,10 @@
         <a class="brand" href="{{ url_for('main.index') }}">PersonaChat</a>
         <nav class="nav-links">
           <a href="{{ url_for('main.index') }}">Home</a>
-          <a href="{{ url_for('main.application') }}">Application</a>
           {% if user %}
+            <a href="{{ url_for('personas.library') }}">Personas</a>
+            <a href="{{ url_for('network.view') }}">Network</a>
+            <a href="{{ url_for('conversations.list_conversations') }}">Conversations</a>
             <span class="nav-email">{{ user.email }}</span>
             <a href="{{ url_for('main.logout') }}">Logout</a>
           {% else %}
