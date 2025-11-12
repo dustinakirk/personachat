@@ -28,12 +28,20 @@ class SupabaseService:
     def is_configured(self) -> bool:
         return self._client is not None
 
-    def register_user(self, email: str, password: str) -> SupabaseResult:
+    def register_user(self, email: str, password: str, redirect_to: str = None) -> SupabaseResult:
         if not self._client:
             return SupabaseResult(False, error="Supabase is not configured.")
 
         try:
-            response = self._client.auth.sign_up({"email": email, "password": password})
+            options = {}
+            if redirect_to:
+                options["email_redirect_to"] = redirect_to
+
+            response = self._client.auth.sign_up({
+                "email": email,
+                "password": password,
+                "options": options
+            })
             if response.user:
                 return SupabaseResult(True, data={"id": response.user.id, "email": response.user.email})
             return SupabaseResult(False, error="Signup failed without additional details.")

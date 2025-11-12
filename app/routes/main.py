@@ -95,9 +95,13 @@ def register():
             if not supabase.is_configured:
                 flash("Supabase is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY.", "error")
             else:
-                result = supabase.register_user(email, password)
+                # Build redirect URL for email confirmation
+                app_url = current_app.config.get("APP_URL", "http://127.0.0.1:8000")
+                redirect_url = f"{app_url}/auth/callback"
+
+                result = supabase.register_user(email, password, redirect_to=redirect_url)
                 if result.success:
-                    flash("Account created. Please log in.", "success")
+                    flash("Account created. Please check your email to confirm your account.", "success")
                     return redirect(url_for("main.login"))
                 flash(result.error or "Unable to register.", "error")
 
@@ -133,3 +137,13 @@ def logout():
     session.clear()
     flash("Signed out.", "info")
     return redirect(url_for("main.index"))
+
+
+@main_bp.route("/auth/callback")
+def auth_callback():
+    """Handle email confirmation callback from Supabase."""
+    # Supabase sends the access token and refresh token as URL fragments
+    # which are handled client-side. We just need to provide a landing page
+    # that shows the user they've been confirmed and redirects to login.
+    flash("Email confirmed successfully! Please log in to continue.", "success")
+    return redirect(url_for("main.login"))
