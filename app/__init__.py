@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -8,6 +9,8 @@ from .services.gemini_service import GeminiService
 from .services.supabase_service import SupabaseService
 from .services.persona_service import PersonaService
 from .services.conversation_service import ConversationService
+
+logger = logging.getLogger(__name__)
 
 
 def create_app() -> Flask:
@@ -45,6 +48,10 @@ def create_app() -> Flask:
     @app.before_request
     def setup_authenticated_services():
         """Initialize request-scoped services with authenticated Supabase client"""
+        # Always initialize services to None (prevents AttributeError)
+        g.persona_service = None
+        g.conversation_service = None
+
         if "user" in session:
             access_token = session["user"].get("access_token")
             if access_token:
@@ -54,6 +61,10 @@ def create_app() -> Flask:
                     # Initialize request-scoped services with authenticated client
                     g.persona_service = PersonaService(auth_client)
                     g.conversation_service = ConversationService(auth_client)
+                else:
+                    logger.error("Failed to create authenticated Supabase client for user session")
+            else:
+                logger.warning("User in session but no access_token found")
 
     @app.errorhandler(Exception)
     def handle_jwt_expired(error):

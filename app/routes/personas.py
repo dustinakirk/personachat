@@ -8,6 +8,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from functools import wraps
 
 from app.models import PersonaEnrichment, Persona
+from app.decorators import requires_services, requires_persona_service
 
 personas_bp = Blueprint("personas", __name__, url_prefix="/personas")
 
@@ -29,6 +30,7 @@ def login_required(f):
 
 @personas_bp.route("/")
 @login_required
+@requires_services
 def library():
     """Display persona library with search and filtering"""
     user_id = session["user"]["id"]
@@ -108,6 +110,7 @@ def create():
 
 @personas_bp.route("/save", methods=["POST"])
 @login_required
+@requires_persona_service
 def save():
     """Save a persona after enrichment (with user edits)"""
     user_id = session["user"]["id"]
@@ -165,6 +168,7 @@ def save():
 
 @personas_bp.route("/<persona_id>/edit", methods=["GET", "POST"])
 @login_required
+@requires_persona_service
 def edit(persona_id):
     """Edit an existing persona"""
     user_id = session["user"]["id"]
@@ -220,6 +224,7 @@ def edit(persona_id):
 
 @personas_bp.route("/<persona_id>/archive", methods=["POST"])
 @login_required
+@requires_persona_service
 def archive(persona_id):
     """Archive a persona (soft delete)"""
     result = g.persona_service.archive_persona(persona_id)
@@ -232,6 +237,7 @@ def archive(persona_id):
 
 @personas_bp.route("/<persona_id>/unarchive", methods=["POST"])
 @login_required
+@requires_persona_service
 def unarchive(persona_id):
     """Unarchive a persona"""
     result = g.persona_service.unarchive_persona(persona_id)
@@ -244,6 +250,7 @@ def unarchive(persona_id):
 
 @personas_bp.route("/<persona_id>/delete", methods=["POST"])
 @login_required
+@requires_persona_service
 def delete(persona_id):
     """Permanently delete a persona"""
     result = g.persona_service.delete_persona(persona_id)

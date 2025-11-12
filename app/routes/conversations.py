@@ -11,6 +11,7 @@ import json
 import re
 
 from app.models import Persona
+from app.decorators import requires_services, requires_conversation_service
 
 conversations_bp = Blueprint("conversations", __name__, url_prefix="/conversations")
 
@@ -32,6 +33,7 @@ def login_required(f):
 
 @conversations_bp.route("/")
 @login_required
+@requires_conversation_service
 def list_conversations():
     """List recent conversations"""
     user_id = session["user"]["id"]
@@ -53,6 +55,7 @@ def list_conversations():
 
 @conversations_bp.route("/create", methods=["GET", "POST"])
 @login_required
+@requires_services
 def create():
     """Create a new conversation with selected personas"""
     user_id = session["user"]["id"]
@@ -96,6 +99,7 @@ def create():
 
 @conversations_bp.route("/<conversation_id>")
 @login_required
+@requires_services
 def chat(conversation_id):
     """Display chat interface for a conversation"""
     user_id = session["user"]["id"]
@@ -135,6 +139,7 @@ def chat(conversation_id):
 
 @conversations_bp.route("/<conversation_id>/send", methods=["POST"])
 @login_required
+@requires_services
 def send_message(conversation_id):
     """Send a user message and get persona responses"""
     user_id = session["user"]["id"]
@@ -255,6 +260,7 @@ def send_message(conversation_id):
 
 @conversations_bp.route("/<conversation_id>/participants/add", methods=["POST"])
 @login_required
+@requires_conversation_service
 def add_participant(conversation_id):
     """Add a persona to the conversation"""
     persona_id = request.form.get("persona_id")
@@ -272,6 +278,7 @@ def add_participant(conversation_id):
 
 @conversations_bp.route("/<conversation_id>/participants/remove", methods=["POST"])
 @login_required
+@requires_conversation_service
 def remove_participant(conversation_id):
     """Remove a persona from the conversation"""
     persona_id = request.form.get("persona_id")
@@ -289,6 +296,7 @@ def remove_participant(conversation_id):
 
 @conversations_bp.route("/<conversation_id>/participants/toggle", methods=["POST"])
 @login_required
+@requires_conversation_service
 def toggle_participant(conversation_id):
     """Toggle a participant's active status (mute/unmute)"""
     persona_id = request.form.get("persona_id")
@@ -311,6 +319,7 @@ def toggle_participant(conversation_id):
 
 @conversations_bp.route("/<conversation_id>/delete", methods=["POST"])
 @login_required
+@requires_conversation_service
 def delete_conversation(conversation_id):
     """Delete a conversation"""
     user_id = session["user"]["id"]
@@ -330,6 +339,7 @@ def delete_conversation(conversation_id):
 
 @conversations_bp.route("/<conversation_id>/title", methods=["POST"])
 @login_required
+@requires_conversation_service
 def update_title(conversation_id):
     """Update conversation title"""
     title = request.form.get("title", "").strip()
