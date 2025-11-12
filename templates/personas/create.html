@@ -32,7 +32,10 @@
 
             <div class="form-actions">
                 <a href="{{ url_for('personas.library') }}" class="btn btn-secondary">Cancel</a>
-                <button type="submit" class="btn btn-primary">Generate Persona Profile</button>
+                <button type="submit" id="generateBtn" class="btn btn-primary">
+                    <span class="spinner" style="display:none;"></span>
+                    <span id="btnText">Generate Persona Profile</span>
+                </button>
             </div>
         </form>
     </div>
@@ -245,9 +248,54 @@ textarea.form-control {
     color: var(--accent);
     font-weight: 500;
 }
+
+/* Loading spinner */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+}
+
+.btn-loading {
+    position: relative;
+    pointer-events: none;
+}
+
+.btn-loading .spinner {
+    display: inline-block;
+}
 </style>
 
 <script>
+// Handle Generate Persona Profile button loading state
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form[action="{{ url_for(\'personas.create\') }}"]');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const btn = document.getElementById('generateBtn');
+            const spinner = btn.querySelector('.spinner');
+            const btnText = document.getElementById('btnText');
+
+            // Disable button and show loading state
+            btn.disabled = true;
+            btn.classList.add('btn-loading');
+            spinner.style.display = 'inline-block';
+            btnText.textContent = 'Generating...';
+        });
+    }
+});
+
 function addQuote() {
     const container = document.getElementById('quotes-container');
     const input = document.createElement('input');

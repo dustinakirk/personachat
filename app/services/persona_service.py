@@ -5,7 +5,10 @@ Handles CRUD operations, enrichment coordination, and relationship management
 for personas and persona groups.
 """
 
+import logging
 from typing import List, Optional
+
+from postgrest import APIError
 from supabase import Client
 from app.models import (
     Persona, PersonaGroup, PersonaRelationship,
@@ -13,6 +16,7 @@ from app.models import (
 )
 from app.services.supabase_service import SupabaseResult, SupabaseService
 
+logger = logging.getLogger(__name__)
 
 class PersonaService:
     """Service for persona and persona group operations"""
@@ -30,10 +34,14 @@ class PersonaService:
         try:
             # Use authenticated client if access_token provided
             client = self._client
-            if access_token and self._supabase_service:
+            if self._supabase_service:
+                if not access_token:
+                    logger.warning("Access token missing when creating persona group for user_id=%s", user_id)
+                    return SupabaseResult(False, error="Authentication required to create persona groups.")
                 client = self._supabase_service.get_authenticated_client(access_token)
                 if not client:
-                    return SupabaseResult(False, error="Failed to create authenticated client")
+                    logger.error("Failed to create authenticated Supabase client for persona group (user_id=%s)", user_id)
+                    return SupabaseResult(False, error="Failed to authenticate Supabase request.")
 
             data = {
                 "user_id": user_id,
@@ -42,7 +50,12 @@ class PersonaService:
             }
             result = client.table("persona_groups").insert(data).execute()
             return SupabaseResult(True, data=result.data[0] if result.data else {})
-        except Exception as exc:
+        except APIError as api_error:
+            error_payload = api_error.json()
+            logger.error("Supabase error creating persona group for user_id=%s: %s", user_id, error_payload)
+            return SupabaseResult(False, error=error_payload)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.exception("Unexpected error creating persona group for user_id=%s", user_id)
             return SupabaseResult(False, error=str(exc))
 
     def get_persona_groups(self, user_id: str) -> SupabaseResult:
@@ -93,10 +106,17 @@ class PersonaService:
         try:
             # Use authenticated client if access_token provided
             client = self._client
-            if access_token and self._supabase_service:
+            if self._supabase_service:
+                if not access_token:
+                    logger.error("Access token missing when creating persona for user_id=%s", user_id)
+                    return SupabaseResult(False, error="Authentication required: No access token in session. Please log out and log back in.")
+
+                logger.info("Attempting to create authenticated client for persona creation (user_id=%s)", user_id)
                 client = self._supabase_service.get_authenticated_client(access_token)
+
                 if not client:
-                    return SupabaseResult(False, error="Failed to create authenticated client")
+                    logger.error("Failed to create authenticated Supabase client for persona creation (user_id=%s)", user_id)
+                    return SupabaseResult(False, error="Failed to authenticate Supabase request. Please check server logs for details, or try logging out and back in.")
 
             data = {
                 "user_id": user_id,
@@ -114,7 +134,12 @@ class PersonaService:
             }
             result = client.table("personas").insert(data).execute()
             return SupabaseResult(True, data=result.data[0] if result.data else {})
-        except Exception as exc:
+        except APIError as api_error:
+            error_payload = api_error.json()
+            logger.error("Supabase error creating persona for user_id=%s: %s", user_id, error_payload)
+            return SupabaseResult(False, error=error_payload)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.exception("Unexpected error creating persona for user_id=%s", user_id)
             return SupabaseResult(False, error=str(exc))
 
     def get_persona(self, persona_id: str) -> SupabaseResult:

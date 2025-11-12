@@ -4,8 +4,33 @@
 
 {% block content %}
 <div class="container">
+
+    <!-- Recent Conversations (if any exist) -->
+    {% if conversations %}
+    <div class="dashboard-card recent-conversations">
+        <div class="card-header">
+            <h2>Recent Conversations</h2>
+            <a href="{{ url_for('conversations.list_conversations') }}" class="view-all">View All</a>
+        </div>
+
+        <div class="conversations-list">
+            {% for conversation in conversations %}
+            <a href="{{ url_for('conversations.chat', conversation_id=conversation.id) }}" class="conversation-item">
+                <div class="conversation-title">
+                    {{ conversation.title or 'Untitled Conversation' }}
+                </div>
+                <div class="conversation-meta">
+                    {{ conversation.updated_at.strftime('%b %d') if conversation.updated_at else 'Never' }}
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Persona Library Header -->
     <div class="page-header">
-        <h1>Persona Library</h1>
+        <h1>{% if persona_count == 0 %}Persona Library{% else %}Your Personas{% endif %}</h1>
         <div class="header-actions">
             <a href="{{ url_for('personas.create') }}" class="btn btn-primary">
                 <i class="icon-plus"></i> Create Persona
@@ -121,6 +146,89 @@
 </div>
 
 <style>
+.welcome-section {
+    margin-bottom: 2rem;
+}
+
+.welcome-section h1 {
+    margin: 0 0 0.5rem 0;
+    font-family: var(--font-header);
+}
+
+.welcome-text {
+    color: var(--text-dim);
+    font-size: 1.1rem;
+}
+
+.dashboard-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.dashboard-card h2 {
+    margin: 0 0 1.5rem 0;
+    font-size: 1.2rem;
+    font-family: var(--font-header);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.card-header h2 {
+    margin: 0;
+    font-family: var(--font-header);
+}
+
+.view-all {
+    color: var(--accent);
+    font-size: 0.9rem;
+    text-decoration: none;
+}
+
+.view-all:hover {
+    text-decoration: underline;
+}
+
+.conversations-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.conversation-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    text-decoration: none;
+    color: var(--text);
+    transition: all 0.2s;
+}
+
+.conversation-item:hover {
+    border-color: var(--accent);
+    transform: translateX(4px);
+}
+
+.conversation-title {
+    font-weight: 500;
+}
+
+.conversation-meta {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+}
+
 .page-header {
     display: flex;
     justify-content: space-between;

@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from supabase import Client, create_client
+from supabase.lib.client_options import ClientOptions
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class SupabaseResult:
     success: bool
     data: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+    error: Optional[Any] = None
 
 
 class SupabaseService:
@@ -34,13 +38,35 @@ class SupabaseService:
         This allows RLS policies to work correctly using auth.uid().
         """
         if not self._url or not self._key:
+            logger.error("Supabase configuration missing; cannot create authenticated client")
+            logger.error(f"URL present: {bool(self._url)}, Key present: {bool(self._key)}")
             return None
 
-        return create_client(
-            self._url,
-            self._key,
-            options={"headers": {"Authorization": f"Bearer {access_token}"}}
-        )
+        if not access_token:
+            logger.error("Access token missing while requesting authenticated Supabase client")
+            return None
+
+        # Log token format for debugging (first and last 10 chars only for security)
+        token_preview = f"{access_token[:10]}...{access_token[-10:]}" if len(access_token) > 20 else "[short token]"
+        logger.info(f"Creating authenticated client with token: {token_preview}")
+
+        try:
+            options = ClientOptions(
+                auto_refresh_token=False,
+                persist_session=False,
+            )
+            client = create_client(self._url, self._key, options=options)
+            bearer = f"Bearer {access_token}"
+            client.options.headers["Authorization"] = bearer
+            # Ensure the underlying PostgREST client uses the user's token
+            client.postgrest.auth(access_token)
+            logger.info("Successfully created authenticated Supabase client")
+            return client
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.error(f"Failed to create authenticated Supabase client. Exception type: {type(exc).__name__}")
+            logger.error(f"Exception details: {str(exc)}")
+            logger.exception("Full traceback:")
+            return None
 
     def register_user(self, email: str, password: str, redirect_to: str = None) -> SupabaseResult:
         if not self._client:

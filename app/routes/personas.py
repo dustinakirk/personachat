@@ -76,6 +76,16 @@ def library():
                     'personas': grouped_personas[group.id]
                 })
 
+    # Get recent conversations for dashboard view
+    conversations = []
+    if current_app.conversation_service:
+        conv_result = current_app.conversation_service.get_user_conversations(user_id, limit=5)
+        if conv_result.success:
+            conversations = conv_result.data.get("conversations", [])
+
+    # Get persona count for showing getting started guide
+    persona_count = len(personas)
+
     return render_template(
         "personas/library.html",
         personas=personas if (search_query or group_filter) else None,
@@ -83,7 +93,9 @@ def library():
         ungrouped_personas=ungrouped_personas if not (search_query or group_filter) else None,
         groups=groups,
         search_query=search_query,
-        selected_group=group_filter
+        selected_group=group_filter,
+        conversations=conversations,
+        persona_count=persona_count
     )
 
 
@@ -141,6 +153,16 @@ def save():
     """Save a persona after enrichment (with user edits)"""
     user_id = session["user"]["id"]
     access_token = session["user"].get("access_token")
+
+    # Debug logging for session and token
+    current_app.logger.info(f"Save persona request from user_id: {user_id}")
+    current_app.logger.info(f"Session keys: {list(session.get('user', {}).keys())}")
+    current_app.logger.info(f"Access token present: {bool(access_token)}")
+    if access_token:
+        token_preview = f"{access_token[:10]}...{access_token[-10:]}" if len(access_token) > 20 else "[short token]"
+        current_app.logger.info(f"Access token preview: {token_preview}")
+    else:
+        current_app.logger.error("Access token is None or empty in session")
 
     # Extract form data
     name = request.form.get("name", "").strip()
@@ -211,7 +233,12 @@ def save():
         flash(f"Persona '{name}' created successfully!", "success")
         return redirect(url_for("personas.library"))
     else:
-        flash(f"Error saving persona: {result.error}", "error")
+        error_msg = result.error
+        # Check if it's an RLS/authentication error
+        if isinstance(error_msg, dict) and error_msg.get('code') == '42501':
+            flash("Your session may have expired. Please log out and log back in to continue.", "error")
+        else:
+            flash(f"Error saving persona: {error_msg}", "error")
         return redirect(url_for("personas.create"))
 
 
@@ -265,6 +292,7 @@ def suggestions(persona_id):
 def accept_suggestion(persona_id):
     """Accept a suggested persona and create it with a relationship"""
     user_id = session["user"]["id"]
+    access_token = session["user"].get("access_token")
 
     # Get suggestion data from form
     name = request.form.get("name")
@@ -286,10 +314,14 @@ def accept_suggestion(persona_id):
         tags=["suggested"]
     )
 
-    create_result = current_app.persona_service.create_persona(user_id, enrichment)
+    create_result = current_app.persona_service.create_persona(user_id, enrichment, None, access_token)
 
     if not create_result.success:
-        return jsonify({"success": False, "error": create_result.error}), 500
+        error_msg = create_result.error
+        # Check if it's an RLS/authentication error
+        if isinstance(error_msg, dict) and error_msg.get('code') == '42501':
+            return jsonify({"success": False, "error": "Session expired. Please refresh the page and log in again."}), 401
+        return jsonify({"success": False, "error": error_msg}), 500
 
     new_persona_id = create_result.data.get("id")
 
@@ -418,13 +450,19 @@ def delete(persona_id):
 def create_group():
     """Create a new persona group"""
     user_id = session["user"]["id"]
+    access_token = session["user"].get("access_token")
     name = request.form.get("name", "").strip()
     description = request.form.get("description", "").strip()
 
     if not name:
         return jsonify({"success": False, "error": "Group name is required"}), 400
 
-    result = current_app.persona_service.create_persona_group(user_id, name, description or None)
+    result = current_app.persona_service.create_persona_group(
+        user_id,
+        name,
+        description or None,
+        access_token,
+    )
 
     if result.success:
         return jsonify({"success": True, "group": result.data})

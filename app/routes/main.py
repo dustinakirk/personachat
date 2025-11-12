@@ -32,30 +32,9 @@ def login_required(view_func):
 def index():
     user = session.get("user")
 
-    # If logged in, show dashboard
+    # If logged in, redirect to personas library (new home page)
     if user:
-        user_id = user.get("id")
-
-        # Get recent conversations
-        conversations = []
-        if current_app.conversation_service:
-            conv_result = current_app.conversation_service.get_user_conversations(user_id, limit=5)
-            if conv_result.success:
-                conversations = conv_result.data.get("conversations", [])
-
-        # Get persona count
-        persona_count = 0
-        if current_app.persona_service:
-            personas_result = current_app.persona_service.get_personas(user_id)
-            if personas_result.success:
-                persona_count = len(personas_result.data.get("personas", []))
-
-        return render_template(
-            "dashboard.html",
-            user=user,
-            conversations=conversations,
-            persona_count=persona_count
-        )
+        return redirect(url_for("personas.library"))
 
     # If not logged in, show landing page
     return render_template("index.html", user=user)
