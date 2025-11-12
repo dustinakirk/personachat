@@ -129,7 +129,6 @@ def test_routes():
         "/login",
         "/register",
         "/logout",
-        "/application",
 
         # Persona routes
         "/personas/",

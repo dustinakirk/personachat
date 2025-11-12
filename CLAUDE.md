@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PersonaChat V1 is a Flask web application for creating AI-enriched personas, building relationship networks, and conducting multi-persona conversations. It's designed for Vercel serverless deployment and integrates Supabase (database/auth) and Google Gemini (AI features).
+PersonaChat V1 is a Flask web application for creating AI-enriched personas and conducting multi-persona conversations. It's designed for Vercel serverless deployment and integrates Supabase (database/auth) and Google Gemini (AI features).
 
 ## Development Commands
 
@@ -77,7 +77,7 @@ vercel env add SESSION_COOKIE_SECURE
 - **Factory**: `app/__init__.py` - `create_app()` function:
   - Configures Flask app with templates/static paths
   - Initializes 4 services as app attributes
-  - Registers 4 blueprints (main, personas, network, conversations)
+  - Registers 3 blueprints (main, personas, conversations)
   - Injects global context variables
 
 ### Service Layer
@@ -85,7 +85,7 @@ All services follow the Result pattern (SupabaseResult/GeminiResult) with `succe
 
 **1. SupabaseService** (`app/services/supabase_service.py`)
 - Authentication: `register_user()`, `login_user()`
-- Legacy conversation methods (for old `/application` route)
+- User profiles: `create_user_profile()`, `get_user_profile()`, `update_user_profile()`
 - Returns: `SupabaseResult` dataclass
 
 **2. GeminiService** (`app/services/gemini_service.py`)
@@ -102,7 +102,6 @@ All services follow the Result pattern (SupabaseResult/GeminiResult) with `succe
 - **Persona CRUD**: `create_persona()`, `get_persona()`, `get_personas()`, `update_persona()`, `search_personas()`, `archive_persona()`, `delete_persona()`
 - **Groups**: `create_persona_group()`, `get_persona_groups()`, `update_persona_group()`, `delete_persona_group()`
 - **Relationships**: `create_relationship()`, `get_persona_relationships()`, `update_relationship()`, `delete_relationship()`
-- **Network Data**: `get_network_data(user_id, center_persona_id=None)` - Returns personas + relationships for visualization
 - Returns: `SupabaseResult` dataclass
 
 **4. ConversationService** (`app/services/conversation_service.py`)
@@ -126,9 +125,8 @@ Dataclasses for type safety and structure:
 
 **1. main_bp** (`app/routes/main.py`) - URL prefix: `/`
 - `/` - Dashboard (if logged in) or landing page
-- `/application` - Legacy Gemini chat interface (kept for backward compatibility)
-- `/stream` - SSE streaming endpoint (legacy)
 - `/register`, `/login`, `/logout` - Authentication
+- `/auth/callback` - Email confirmation callback from Supabase
 
 **2. personas_bp** (`app/routes/personas.py`) - URL prefix: `/personas`
 - `/` - Persona library with search and filters
@@ -140,15 +138,7 @@ Dataclasses for type safety and structure:
 - `/<persona_id>/archive` (POST), `/unarchive` (POST), `/delete` (POST)
 - `/groups/create` (POST) - Create persona group
 
-**3. network_bp** (`app/routes/network.py`) - URL prefix: `/network`
-- `/` - Network visualization view (Cytoscape.js)
-- `/data` (GET) - JSON endpoint for graph data (nodes + edges)
-- `/relationships/create` (POST) - Create edge
-- `/relationships/<rel_id>/update` (POST) - Update edge label/type
-- `/relationships/<rel_id>/delete` (POST) - Delete edge
-- `/expand/<persona_id>` (GET) - Get expansion suggestions for node
-
-**4. conversations_bp** (`app/routes/conversations.py`) - URL prefix: `/conversations`
+**3. conversations_bp** (`app/routes/conversations.py`) - URL prefix: `/conversations`
 - `/` - List recent conversations
 - `/create` (GET/POST) - Create conversation with participant selection
 - `/<conv_id>` - Chat interface
@@ -164,7 +154,7 @@ Dataclasses for type safety and structure:
 ### Template Structure
 
 **Base & Shared**
-- `templates/base.html` - Navigation updated with Personas, Network, Conversations links
+- `templates/base.html` - Navigation with Personas and Conversations links
 - `templates/dashboard.html` - Home dashboard with quick actions, stats, recent conversations
 - `templates/index.html` - Landing page (not logged in)
 
@@ -173,9 +163,6 @@ Dataclasses for type safety and structure:
 - `create.html` - Two-step: (1) free-form description, (2) edit AI-enriched profile
 - `edit.html` - Full persona editing form
 - `suggestions.html` - Related persona suggestions with accept/dismiss
-
-**Network**
-- `templates/network.html` - Cytoscape.js graph with sidebar controls and filters
 
 **Conversations** (`templates/conversations/`)
 - `list.html` - Recent conversations list
@@ -235,11 +222,6 @@ if enrichment_result.success:
 6. Return responses to frontend
 ```
 
-### Network Visualization Pattern
-- Backend: `/network/data` returns `{"elements": {"nodes": [...], "edges": [...]}}`
-- Frontend: Cytoscape.js initializes with elements, applies styling and layout
-- Interactions: Click node → show details, click edge → edit label, filters → hide/show edges
-
 ## Frontend Assets
 
 ### CSS
@@ -247,7 +229,6 @@ if enrichment_result.success:
 
 ### JavaScript (Inline in Templates)
 - **Personas**: Archive/delete with undo, dynamic form fields (goals, pains, quotes)
-- **Network**: Cytoscape.js initialization, filters, relationship editing, expansion
 - **Conversations**: Message sending, participant toggling, title editing, transcript copying
 
 ## Common Operations
@@ -271,14 +252,6 @@ if enrichment_result.success:
 8. Return JSON responses to frontend
 9. Page reloads to show new messages
 
-### Network Expansion
-1. User clicks "Expand Network" on a persona node
-2. GET `/network/expand/<persona_id>`
-3. Backend calls `gemini_service.suggest_related_personas()`
-4. Returns JSON suggestions
-5. User accepts → creates new persona + relationship
-6. Graph refreshes
-
 ## Vercel Routing
 - `vercel.json` routes all traffic `(.*)` to `api/index.py`
 - Python runtime: 3.11
@@ -301,8 +274,6 @@ SESSION_COOKIE_SECURE     # true in production
 - Persona creation from single text area with AI enrichment
 - Editable persona profiles (name, role, company, goals, pains, behaviors, tools, quotes, tags)
 - Related persona suggestions with accept/dismiss
-- Network visualization (Cytoscape.js with pan/zoom/drag)
-- Relationship editing (add/remove edges, rename labels)
 - Multi-persona chat with intelligent routing
 - @mention support for directed messages
 - Autosave conversations with resume functionality
@@ -314,7 +285,6 @@ SESSION_COOKIE_SECURE     # true in production
 ### Known Limitations
 - No streaming responses in multi-persona chat (uses standard generation)
 - No real-time updates (page reloads after sending message)
-- Network graph limited to ~30 nodes for readability
 - Max 5 personas per conversation
 - Max 3 persona responses per user message
 

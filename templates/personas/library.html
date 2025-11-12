@@ -24,6 +24,9 @@
                 class="search-input"
             />
             <button type="submit" class="btn btn-secondary">Search</button>
+            {% if search_query %}
+            <a href="{{ url_for('personas.library') }}" class="btn btn-secondary">Clear</a>
+            {% endif %}
         </form>
 
         <div class="filter-group">
@@ -41,60 +44,79 @@
         </div>
     </div>
 
-    <!-- Personas Grid -->
-    {% if personas %}
-    <div class="personas-grid">
-        {% for persona in personas %}
-        <div class="persona-card" data-persona-id="{{ persona.id }}">
-            <div class="persona-card-header">
-                <div class="persona-info">
-                    <h3>{{ persona.name }}</h3>
-                    <p class="persona-role">{{ persona.role or 'No role specified' }}</p>
-                    {% if persona.company %}
-                    <p class="persona-company">{{ persona.company }}</p>
-                    {% endif %}
+    <!-- Grouped View (default) -->
+    {% if groups_with_personas is not none %}
+        {% if groups_with_personas or ungrouped_personas %}
+            <!-- Groups -->
+            {% for item in groups_with_personas %}
+            <div class="group-section">
+                <div class="group-header" onclick="toggleGroup('{{ item.group.id }}')">
+                    <div class="group-info">
+                        <h2>{{ item.group.name }}</h2>
+                        <span class="group-count">{{ item.personas|length }} persona{{ 's' if item.personas|length != 1 else '' }}</span>
+                    </div>
+                    <div class="group-actions">
+                        <a href="{{ url_for('personas.create', group_id=item.group.id) }}" class="btn btn-small btn-primary" onclick="event.stopPropagation()">
+                            + Add Persona
+                        </a>
+                        <span class="collapse-icon" id="icon-{{ item.group.id }}">▼</span>
+                    </div>
                 </div>
-                <div class="persona-actions">
-                    <button class="btn-icon" onclick="archivePersona('{{ persona.id }}')" title="Archive">
-                        <i class="icon-archive"></i>
-                    </button>
-                </div>
-            </div>
-
-            <div class="persona-card-body">
-                {% if persona.goals %}
-                <div class="persona-section">
-                    <strong>Goals:</strong>
-                    <ul>
-                        {% for goal in persona.goals[:2] %}
-                        <li>{{ goal }}</li>
+                <div class="group-content" id="content-{{ item.group.id }}">
+                    <div class="personas-grid">
+                        {% for persona in item.personas %}
+                        {% include 'personas/_persona_card.html' %}
                         {% endfor %}
-                    </ul>
+                    </div>
                 </div>
-                {% endif %}
+            </div>
+            {% endfor %}
 
-                {% if persona.tags %}
-                <div class="persona-tags">
-                    {% for tag in persona.tags[:4] %}
-                    <span class="tag">{{ tag }}</span>
-                    {% endfor %}
+            <!-- Ungrouped Personas -->
+            {% if ungrouped_personas %}
+            <div class="group-section">
+                <div class="group-header" onclick="toggleGroup('ungrouped')">
+                    <div class="group-info">
+                        <h2>Uncategorized</h2>
+                        <span class="group-count">{{ ungrouped_personas|length }} persona{{ 's' if ungrouped_personas|length != 1 else '' }}</span>
+                    </div>
+                    <div class="group-actions">
+                        <span class="collapse-icon" id="icon-ungrouped">▼</span>
+                    </div>
                 </div>
-                {% endif %}
+                <div class="group-content" id="content-ungrouped">
+                    <div class="personas-grid">
+                        {% for persona in ungrouped_personas %}
+                        {% include 'personas/_persona_card.html' %}
+                        {% endfor %}
+                    </div>
+                </div>
             </div>
+            {% endif %}
+        {% else %}
+            <div class="empty-state">
+                <h2>No personas yet</h2>
+                <p>Get started by creating your first persona!</p>
+                <a href="{{ url_for('personas.create') }}" class="btn btn-primary">Create Your First Persona</a>
+            </div>
+        {% endif %}
+    {% endif %}
 
-            <div class="persona-card-footer">
-                <a href="{{ url_for('personas.edit', persona_id=persona.id) }}" class="btn btn-small">Edit</a>
-                <a href="{{ url_for('network.view', persona_id=persona.id) }}" class="btn btn-small btn-secondary">Network</a>
-            </div>
+    <!-- Search/Filter Results View -->
+    {% if personas is not none %}
+        {% if personas %}
+        <div class="personas-grid">
+            {% for persona in personas %}
+            {% include 'personas/_persona_card.html' %}
+            {% endfor %}
         </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="empty-state">
-        <h2>No personas found</h2>
-        <p>{% if search_query %}No personas match your search.{% else %}Get started by creating your first persona!{% endif %}</p>
-        <a href="{{ url_for('personas.create') }}" class="btn btn-primary">Create Your First Persona</a>
-    </div>
+        {% else %}
+        <div class="empty-state">
+            <h2>No personas found</h2>
+            <p>{% if search_query %}No personas match your search.{% else %}No personas in this group.{% endif %}</p>
+            <a href="{{ url_for('personas.library') }}" class="btn btn-secondary">View All Personas</a>
+        </div>
+        {% endif %}
     {% endif %}
 </div>
 
@@ -118,7 +140,7 @@
     padding: 1.5rem;
     margin-bottom: 2rem;
     display: flex;
-    gap: 2rem;
+    gap: 1rem;
     align-items: center;
     flex-wrap: wrap;
 }
@@ -153,118 +175,94 @@
     color: var(--text);
 }
 
+.group-section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+
+.group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    cursor: pointer;
+    background: var(--panel);
+    transition: background 0.2s;
+}
+
+.group-header:hover {
+    background: var(--bg);
+}
+
+.group-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.group-info h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    color: var(--accent);
+    font-family: var(--font-header);
+}
+
+.group-count {
+    background: var(--bg);
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+}
+
+.group-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.collapse-icon {
+    color: var(--text-dim);
+    transition: transform 0.3s;
+    font-size: 0.75rem;
+}
+
+.collapse-icon.collapsed {
+    transform: rotate(-90deg);
+}
+
+.group-content {
+    padding: 0 1.5rem 1.5rem 1.5rem;
+    max-height: 2000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+}
+
+.group-content.collapsed {
+    max-height: 0;
+    padding: 0 1.5rem;
+}
+
 .personas-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 1.5rem;
 }
 
-.persona-card {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 1.5rem;
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.persona-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.persona-card-header {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 1rem;
-}
-
-.persona-info h3 {
-    margin: 0 0 0.5rem 0;
-    color: var(--accent);
-}
-
-.persona-role {
-    margin: 0;
-    font-size: 0.9rem;
-    color: var(--text-dim);
-}
-
-.persona-company {
-    margin: 0.25rem 0 0 0;
-    font-size: 0.85rem;
-    color: var(--text-dim);
-}
-
-.persona-actions {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.btn-icon {
-    background: none;
-    border: none;
-    color: var(--text-dim);
-    cursor: pointer;
-    padding: 0.25rem;
-    transition: color 0.2s;
-}
-
-.btn-icon:hover {
-    color: var(--accent);
-}
-
-.persona-card-body {
-    margin-bottom: 1rem;
-}
-
-.persona-section {
-    margin-bottom: 1rem;
-}
-
-.persona-section strong {
-    display: block;
-    margin-bottom: 0.5rem;
-}
-
-.persona-section ul {
-    margin: 0;
-    padding-left: 1.5rem;
-    font-size: 0.9rem;
-    color: var(--text-dim);
-}
-
-.persona-section li {
-    margin: 0.25rem 0;
-}
-
-.persona-tags {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-
-.tag {
-    background: var(--bg);
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    color: var(--text-dim);
-}
-
-.persona-card-footer {
-    display: flex;
-    gap: 0.5rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--border);
-}
-
 .empty-state {
     text-align: center;
     padding: 4rem 2rem;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
 }
 
 .empty-state h2 {
     margin-bottom: 1rem;
+    font-family: var(--font-header);
 }
 
 .empty-state p {
@@ -274,61 +272,12 @@
 </style>
 
 <script>
-async function archivePersona(personaId) {
-    if (!confirm('Archive this persona? You can restore it later.')) {
-        return;
-    }
+function toggleGroup(groupId) {
+    const content = document.getElementById(`content-${groupId}`);
+    const icon = document.getElementById(`icon-${groupId}`);
 
-    try {
-        const response = await fetch(`/personas/${personaId}/archive`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            // Remove card from DOM
-            const card = document.querySelector(`[data-persona-id="${personaId}"]`);
-            card.style.opacity = '0';
-            setTimeout(() => card.remove(), 300);
-
-            // Show undo notification
-            showUndo(personaId);
-        } else {
-            alert('Error archiving persona: ' + data.error);
-        }
-    } catch (error) {
-        alert('Error archiving persona: ' + error.message);
-    }
-}
-
-function showUndo(personaId) {
-    // Simple undo notification (can be enhanced)
-    const notification = document.createElement('div');
-    notification.className = 'undo-notification';
-    notification.innerHTML = `
-        Persona archived. <button onclick="undoArchive('${personaId}')">Undo</button>
-    `;
-    document.body.appendChild(notification);
-
-    setTimeout(() => notification.remove(), 5000);
-}
-
-async function undoArchive(personaId) {
-    try {
-        const response = await fetch(`/personas/${personaId}/unarchive`, {
-            method: 'POST'
-        });
-
-        if (response.ok) {
-            location.reload();
-        }
-    } catch (error) {
-        console.error('Error unarchiving:', error);
-    }
+    content.classList.toggle('collapsed');
+    icon.classList.toggle('collapsed');
 }
 </script>
 {% endblock %}

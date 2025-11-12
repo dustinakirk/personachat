@@ -11,28 +11,36 @@ from app.models import (
     Persona, PersonaGroup, PersonaRelationship,
     PersonaEnrichment, PersonaSuggestion
 )
-from app.services.supabase_service import SupabaseResult
+from app.services.supabase_service import SupabaseResult, SupabaseService
 
 
 class PersonaService:
     """Service for persona and persona group operations"""
 
-    def __init__(self, supabase_client: Client):
-        self._client = supabase_client
+    def __init__(self, supabase_client: Client, supabase_service: SupabaseService = None):
+        self._client = supabase_client  # Default client for reads
+        self._supabase_service = supabase_service  # For creating authenticated clients
 
     # ========================================================================
     # PERSONA GROUP OPERATIONS
     # ========================================================================
 
-    def create_persona_group(self, user_id: str, name: str, description: Optional[str] = None) -> SupabaseResult:
+    def create_persona_group(self, user_id: str, name: str, description: Optional[str] = None, access_token: Optional[str] = None) -> SupabaseResult:
         """Create a new persona group"""
         try:
+            # Use authenticated client if access_token provided
+            client = self._client
+            if access_token and self._supabase_service:
+                client = self._supabase_service.get_authenticated_client(access_token)
+                if not client:
+                    return SupabaseResult(False, error="Failed to create authenticated client")
+
             data = {
                 "user_id": user_id,
                 "name": name,
                 "description": description
             }
-            result = self._client.table("persona_groups").insert(data).execute()
+            result = client.table("persona_groups").insert(data).execute()
             return SupabaseResult(True, data=result.data[0] if result.data else {})
         except Exception as exc:
             return SupabaseResult(False, error=str(exc))
@@ -80,9 +88,16 @@ class PersonaService:
     # PERSONA CRUD OPERATIONS
     # ========================================================================
 
-    def create_persona(self, user_id: str, enrichment: PersonaEnrichment, group_id: Optional[str] = None) -> SupabaseResult:
+    def create_persona(self, user_id: str, enrichment: PersonaEnrichment, group_id: Optional[str] = None, access_token: Optional[str] = None) -> SupabaseResult:
         """Create a new persona from enrichment data"""
         try:
+            # Use authenticated client if access_token provided
+            client = self._client
+            if access_token and self._supabase_service:
+                client = self._supabase_service.get_authenticated_client(access_token)
+                if not client:
+                    return SupabaseResult(False, error="Failed to create authenticated client")
+
             data = {
                 "user_id": user_id,
                 "group_id": group_id,
@@ -97,7 +112,7 @@ class PersonaService:
                 "quotes": enrichment.quotes,
                 "tags": enrichment.tags
             }
-            result = self._client.table("personas").insert(data).execute()
+            result = client.table("personas").insert(data).execute()
             return SupabaseResult(True, data=result.data[0] if result.data else {})
         except Exception as exc:
             return SupabaseResult(False, error=str(exc))
@@ -239,69 +254,6 @@ class PersonaService:
                 all_relationships.extend(incoming.data)
 
             return SupabaseResult(True, data={"relationships": all_relationships})
-        except Exception as exc:
-            return SupabaseResult(False, error=str(exc))
-
-    def get_network_data(self, user_id: str, center_persona_id: Optional[str] = None) -> SupabaseResult:
-        """
-        Get network visualization data for a user's personas
-
-        If center_persona_id is provided, returns that persona and its immediate connections.
-        Otherwise, returns all personas and relationships.
-        """
-        try:
-            # Get personas
-            if center_persona_id:
-                # Get center persona
-                center_result = self._client.table("personas").select("*").eq("id", center_persona_id).single().execute()
-                if not center_result.data:
-                    return SupabaseResult(False, error="Center persona not found")
-
-                # Get related personas
-                rel_result = self.get_persona_relationships(center_persona_id)
-                if not rel_result.success:
-                    return rel_result
-
-                # Collect related persona IDs
-                related_ids = set([center_persona_id])
-                for rel in rel_result.data.get("relationships", []):
-                    related_ids.add(rel["from_persona_id"])
-                    related_ids.add(rel["to_persona_id"])
-
-                # Fetch all related personas
-                personas_result = (
-                    self._client.table("personas")
-                    .select("*")
-                    .in_("id", list(related_ids))
-                    .eq("archived", False)
-                    .execute()
-                )
-                personas = personas_result.data if personas_result.data else []
-                relationships = rel_result.data.get("relationships", [])
-            else:
-                # Get all personas for user
-                personas_result = (
-                    self._client.table("personas")
-                    .select("*")
-                    .eq("user_id", user_id)
-                    .eq("archived", False)
-                    .execute()
-                )
-                personas = personas_result.data if personas_result.data else []
-
-                # Get all relationships for user
-                rel_result = (
-                    self._client.table("persona_relationships")
-                    .select("*")
-                    .eq("user_id", user_id)
-                    .execute()
-                )
-                relationships = rel_result.data if rel_result.data else []
-
-            return SupabaseResult(True, data={
-                "personas": personas,
-                "relationships": relationships
-            })
         except Exception as exc:
             return SupabaseResult(False, error=str(exc))
 

@@ -33,7 +33,7 @@ def create_app() -> Flask:
 
     # Initialize Persona service (requires Supabase client)
     if app.supabase_service.is_configured:
-        app.persona_service = PersonaService(app.supabase_service._client)
+        app.persona_service = PersonaService(app.supabase_service._client, app.supabase_service)
         app.conversation_service = ConversationService(app.supabase_service._client)
     else:
         app.persona_service = None
@@ -41,12 +41,10 @@ def create_app() -> Flask:
 
     from .routes.main import main_bp
     from .routes.personas import personas_bp
-    from .routes.network import network_bp
     from .routes.conversations import conversations_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(personas_bp)
-    app.register_blueprint(network_bp)
     app.register_blueprint(conversations_bp)
 
     @app.context_processor

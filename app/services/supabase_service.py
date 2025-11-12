@@ -28,6 +28,20 @@ class SupabaseService:
     def is_configured(self) -> bool:
         return self._client is not None
 
+    def get_authenticated_client(self, access_token: str) -> Optional[Client]:
+        """
+        Create a Supabase client authenticated with a user's JWT token.
+        This allows RLS policies to work correctly using auth.uid().
+        """
+        if not self._url or not self._key:
+            return None
+
+        return create_client(
+            self._url,
+            self._key,
+            options={"headers": {"Authorization": f"Bearer {access_token}"}}
+        )
+
     def register_user(self, email: str, password: str, redirect_to: str = None) -> SupabaseResult:
         if not self._client:
             return SupabaseResult(False, error="Supabase is not configured.")
@@ -64,37 +78,6 @@ class SupabaseService:
                     },
                 )
             return SupabaseResult(False, error="Invalid credentials.")
-        except Exception as exc:  # pylint: disable=broad-except
-            return SupabaseResult(False, error=str(exc))
-
-    def save_conversation(self, user_id: str, prompt: str, response: str) -> SupabaseResult:
-        """Save a conversation (prompt and response) to the database."""
-        if not self._client:
-            return SupabaseResult(False, error="Supabase is not configured.")
-
-        try:
-            data = {"user_id": user_id, "prompt": prompt, "response": response}
-            result = self._client.table("conversations").insert(data).execute()
-            return SupabaseResult(True, data=result.data[0] if result.data else {})
-        except Exception as exc:  # pylint: disable=broad-except
-            return SupabaseResult(False, error=str(exc))
-
-    def get_user_conversations(self, user_id: str, limit: int = 50) -> SupabaseResult:
-        """Retrieve conversation history for a user."""
-        if not self._client:
-            return SupabaseResult(False, error="Supabase is not configured.")
-
-        try:
-            result = (
-                self._client.table("conversations")
-                .select("*")
-                .eq("user_id", user_id)
-                .order("created_at", desc=True)
-                .limit(limit)
-                .execute()
-            )
-            conversations = result.data if result.data else []
-            return SupabaseResult(True, data={"conversations": conversations})
         except Exception as exc:  # pylint: disable=broad-except
             return SupabaseResult(False, error=str(exc))
 

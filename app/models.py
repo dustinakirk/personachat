@@ -177,6 +177,7 @@ class PersonaEnrichment:
     tools: Optional[str] = None
     quotes: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
+    suggested_group: Optional[str] = None
 
 
 @dataclass

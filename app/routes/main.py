@@ -61,102 +61,10 @@ def index():
     return render_template("index.html", user=user)
 
 
-@main_bp.route("/application", methods=["GET", "POST"])
-@login_required
-def application():
-    prompt = ""
-    gemini_response = None
-    selected_model = None
-    user = session.get("user")
-    user_id = user.get("id") if user else None
-
-    # Load conversation history
-    conversations = []
-    if user_id:
-        history_result = current_app.supabase_service.get_user_conversations(user_id, limit=20)
-        if history_result.success and history_result.data:
-            conversations = history_result.data.get("conversations", [])
-
-    if request.method == "POST":
-        prompt = request.form.get("prompt", "")
-        selected_model = request.form.get("model", None)
-
-        # Generate response using new GeminiResult pattern
-        result = current_app.gemini_service.generate_response(prompt, model=selected_model)
-
-        if result.success:
-            gemini_response = result.data
-
-            # Save conversation to database
-            if user_id and gemini_response:
-                save_result = current_app.supabase_service.save_conversation(
-                    user_id, prompt, gemini_response
-                )
-                if save_result.success:
-                    # Reload conversations to include the new one
-                    history_result = current_app.supabase_service.get_user_conversations(user_id, limit=20)
-                    if history_result.success and history_result.data:
-                        conversations = history_result.data.get("conversations", [])
-                else:
-                    flash(f"Conversation saved to session only: {save_result.error}", "warning")
-        else:
-            flash(result.error, "error")
-
-    return render_template(
-        "application.html",
-        user=user,
-        prompt=prompt,
-        gemini_response=gemini_response,
-        gemini_ready=current_app.gemini_service.is_configured,
-        available_models=current_app.gemini_service.available_models,
-        default_model=current_app.gemini_service.default_model,
-        conversations=conversations,
-    )
-
-
-@main_bp.route("/stream", methods=["POST"])
-@login_required
-def stream():
-    """Server-Sent Events endpoint for streaming Gemini responses."""
-    prompt = request.json.get("prompt", "")
-    selected_model = request.json.get("model", None)
-    user = session.get("user")
-    user_id = user.get("id") if user else None
-
-    if not prompt.strip():
-        return Response("data: {\"error\": \"Empty prompt\"}\n\n", mimetype="text/event-stream")
-
-    def generate():
-        """Generator function for SSE streaming."""
-        full_response = ""
-
-        try:
-            for chunk in current_app.gemini_service.generate_streaming_response(prompt, model=selected_model):
-                full_response += chunk
-                # Send chunk in SSE format
-                yield f"data: {chunk}\n\n"
-
-            # After streaming completes, save to database
-            if user_id and full_response:
-                save_result = current_app.supabase_service.save_conversation(
-                    user_id, prompt, full_response
-                )
-                if not save_result.success:
-                    yield f"data: [ERROR: Failed to save conversation]\n\n"
-
-            # Send completion signal
-            yield "data: [DONE]\n\n"
-
-        except Exception as e:
-            yield f"data: [ERROR: {str(e)}]\n\n"
-
-    return Response(generate(), mimetype="text/event-stream")
-
-
 @main_bp.route("/register", methods=["GET", "POST"])
 def register():
     if session.get("user"):
-        return redirect(url_for("main.application"))
+        return redirect(url_for("main.index"))
 
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
@@ -186,7 +94,7 @@ def register():
 @main_bp.route("/login", methods=["GET", "POST"])
 def login():
     if session.get("user"):
-        return redirect(url_for("main.application"))
+        return redirect(url_for("main.index"))
 
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
@@ -198,9 +106,13 @@ def login():
         else:
             result = supabase.login_user(email, password)
             if result.success and result.data:
-                session["user"] = {"email": result.data.get("email"), "id": result.data.get("id")}
+                session["user"] = {
+                    "email": result.data.get("email"),
+                    "id": result.data.get("id"),
+                    "access_token": result.data.get("access_token")
+                }
                 flash("Welcome back!", "success")
-                return redirect(url_for("main.application"))
+                return redirect(url_for("main.index"))
             flash(result.error or "Invalid credentials.", "error")
 
     return render_template("auth/login.html")

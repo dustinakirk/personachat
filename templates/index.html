@@ -7,7 +7,7 @@
     <p>Create narratives, manage sessions, and tap into Google Gemini through a streamlined Flask interface.</p>
     <div class="hero-actions">
       {% if user %}
-        <a class="btn" href="{{ url_for('main.application') }}">Open Application</a>
+        <a class="btn" href="{{ url_for('main.index') }}">Go to Dashboard</a>
       {% else %}
         <a class="btn" href="{{ url_for('main.register') }}">Get Started</a>
         <a class="btn-secondary" href="{{ url_for('main.login') }}">Log In</a>

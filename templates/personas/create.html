@@ -19,17 +19,6 @@
 
         <form method="POST" action="{{ url_for('personas.create') }}">
             <div class="form-group">
-                <label for="group_id">Persona Group (Optional):</label>
-                <select name="group_id" id="group_id" class="form-control">
-                    <option value="">No Group</option>
-                    {% for group in groups %}
-                    <option value="{{ group.id }}">{{ group.name }}</option>
-                    {% endfor %}
-                </select>
-                <button type="button" class="btn-link" onclick="createNewGroup()">+ Create New Group</button>
-            </div>
-
-            <div class="form-group">
                 <label for="description">Persona Description:</label>
                 <textarea
                     name="description"
@@ -56,8 +45,16 @@
             Our AI has generated a structured profile. Review and edit any fields before saving.
         </p>
 
+        {% if enrichment.suggested_group %}
+        <div class="suggested-group-badge">
+            <span class="badge-label">Suggested Group:</span>
+            <span class="badge-value">{{ enrichment.suggested_group }}</span>
+        </div>
+        {% endif %}
+
         <form method="POST" action="{{ url_for('personas.save') }}">
-            <input type="hidden" name="group_id" value="{{ group_id }}">
+            <input type="hidden" name="suggested_group" value="{{ enrichment.suggested_group or '' }}">
+            <input type="hidden" name="preset_group_id" value="{{ preset_group_id or '' }}">
 
             <div class="form-row">
                 <div class="form-group">
@@ -156,6 +153,7 @@
 
 .creation-card h2 {
     margin-bottom: 0.5rem;
+    font-family: var(--font-header);
 }
 
 .help-text {
@@ -225,6 +223,27 @@ textarea.form-control {
     margin-top: 2rem;
     padding-top: 2rem;
     border-top: 1px solid var(--border);
+}
+
+.suggested-group-badge {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.suggested-group-badge .badge-label {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+}
+
+.suggested-group-badge .badge-value {
+    color: var(--accent);
+    font-weight: 500;
 }
 </style>
 

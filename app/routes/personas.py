@@ -33,17 +33,17 @@ def library():
     """Display persona library with search and filtering"""
     user_id = session["user"]["id"]
     search_query = request.args.get("q", "").strip()
-    group_id = request.args.get("group")
+    group_filter = request.args.get("group")
 
-    # Get persona groups for filter dropdown
+    # Get persona groups
     groups_result = current_app.persona_service.get_persona_groups(user_id)
     groups = groups_result.data.get("groups", []) if groups_result.success else []
 
     # Get personas (with optional search/filter)
     if search_query:
         result = current_app.persona_service.search_personas(user_id, search_query)
-    elif group_id:
-        result = current_app.persona_service.get_personas(user_id, group_id=group_id)
+    elif group_filter:
+        result = current_app.persona_service.get_personas(user_id, group_id=group_filter)
     else:
         result = current_app.persona_service.get_personas(user_id)
 
@@ -53,12 +53,37 @@ def library():
         personas = []
         flash(f"Error loading personas: {result.error}", "error")
 
+    # Organize personas by group
+    grouped_personas = {}
+    ungrouped_personas = []
+
+    if not search_query and not group_filter:
+        # Group personas by their group_id
+        for persona in personas:
+            if persona.group_id:
+                if persona.group_id not in grouped_personas:
+                    grouped_personas[persona.group_id] = []
+                grouped_personas[persona.group_id].append(persona)
+            else:
+                ungrouped_personas.append(persona)
+
+        # Create a dict with group info
+        groups_with_personas = []
+        for group in groups:
+            if group.id in grouped_personas:
+                groups_with_personas.append({
+                    'group': group,
+                    'personas': grouped_personas[group.id]
+                })
+
     return render_template(
         "personas/library.html",
-        personas=personas,
+        personas=personas if (search_query or group_filter) else None,
+        groups_with_personas=groups_with_personas if not (search_query or group_filter) else None,
+        ungrouped_personas=ungrouped_personas if not (search_query or group_filter) else None,
         groups=groups,
         search_query=search_query,
-        selected_group=group_id
+        selected_group=group_filter
     )
 
 
@@ -77,11 +102,12 @@ def create():
     groups = groups_result.data.get("groups", []) if groups_result.success else []
 
     if request.method == "GET":
-        return render_template("personas/create.html", groups=groups)
+        # Check if we have a preset_group_id from "Add Persona" button
+        preset_group_id = request.args.get("group_id")
+        return render_template("personas/create.html", groups=groups, preset_group_id=preset_group_id)
 
     # Handle POST - create persona
     description = request.form.get("description", "").strip()
-    group_id = request.form.get("group_id") or None
 
     if not description:
         flash("Please provide a persona description.", "error")
@@ -96,13 +122,16 @@ def create():
 
     enrichment = enrichment_result.data
 
+    # Check if there's a preset group from query params (for "Add to Group" flow)
+    preset_group_id = request.args.get("group_id")
+
     # Show enrichment for user editing
     return render_template(
         "personas/create.html",
         groups=groups,
         enrichment=enrichment,
         description=description,
-        group_id=group_id
+        preset_group_id=preset_group_id
     )
 
 
@@ -111,6 +140,7 @@ def create():
 def save():
     """Save a persona after enrichment (with user edits)"""
     user_id = session["user"]["id"]
+    access_token = session["user"].get("access_token")
 
     # Extract form data
     name = request.form.get("name", "").strip()
@@ -123,7 +153,36 @@ def save():
     tools = request.form.get("tools", "").strip()
     quotes = [q.strip() for q in request.form.getlist("quotes[]") if q.strip()]
     tags = [t.strip() for t in request.form.get("tags", "").split(",") if t.strip()]
-    group_id = request.form.get("group_id") or None
+
+    # Handle group assignment
+    suggested_group = request.form.get("suggested_group", "").strip()
+    preset_group_id = request.form.get("preset_group_id", "").strip()
+
+    group_id = None
+
+    # Priority: preset_group_id (from "Add to Group" button) > suggested_group (from AI)
+    if preset_group_id:
+        group_id = preset_group_id
+    elif suggested_group:
+        # Find or create the group based on suggested name
+        groups_result = current_app.persona_service.get_persona_groups(user_id)
+        if groups_result.success:
+            groups = groups_result.data.get("groups", [])
+            # Case-insensitive match
+            matching_group = next((g for g in groups if g.name.lower() == suggested_group.lower()), None)
+
+            if matching_group:
+                group_id = matching_group.id
+            else:
+                # Create new group
+                new_group_result = current_app.persona_service.create_persona_group(
+                    user_id=user_id,
+                    name=suggested_group,
+                    description=f"Auto-created group for {suggested_group} personas",
+                    access_token=access_token
+                )
+                if new_group_result.success:
+                    group_id = new_group_result.data.get("id")
 
     if not name:
         flash("Persona name is required.", "error")
@@ -140,19 +199,17 @@ def save():
         behaviors=behaviors or None,
         tools=tools or None,
         quotes=quotes,
-        tags=tags
+        tags=tags,
+        suggested_group=suggested_group or None
     )
 
     # Save persona
-    result = current_app.persona_service.create_persona(user_id, enrichment, group_id)
+    result = current_app.persona_service.create_persona(user_id, enrichment, group_id, access_token)
 
     if result.success:
         persona_id = result.data.get("id")
         flash(f"Persona '{name}' created successfully!", "success")
-
-        # Generate related persona suggestions
-        # We'll redirect to suggestions page
-        return redirect(url_for("personas.suggestions", persona_id=persona_id))
+        return redirect(url_for("personas.library"))
     else:
         flash(f"Error saving persona: {result.error}", "error")
         return redirect(url_for("personas.create"))

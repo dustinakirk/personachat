@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}PersonaChat{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
   </head>
   <body>
@@ -14,7 +15,6 @@
           <a href="{{ url_for('main.index') }}">Home</a>
           {% if user %}
             <a href="{{ url_for('personas.library') }}">Personas</a>
-            <a href="{{ url_for('network.view') }}">Network</a>
             <a href="{{ url_for('conversations.list_conversations') }}">Conversations</a>
             <span class="nav-email">{{ user.email }}</span>
             <a href="{{ url_for('main.logout') }}">Logout</a>

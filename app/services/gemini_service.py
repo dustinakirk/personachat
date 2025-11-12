@@ -6,6 +6,13 @@ from typing import Generator, Optional, List, Dict, Any
 
 from google import genai
 from google.genai import types
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception,
+    RetryError
+)
 
 from app.models import PersonaEnrichment, PersonaSuggestion, Persona
 
@@ -16,6 +23,62 @@ class GeminiResult:
     success: bool
     data: Optional[str] = None
     error: Optional[str] = None
+
+
+def _is_retryable_error(exception: Exception) -> bool:
+    """
+    Determine if an error should trigger a retry.
+
+    Retries on: 503, 429, timeouts, connection errors
+    No retry on: 400, 401, 403, JSON errors, missing API key
+    """
+    error_msg = str(exception).lower()
+
+    # Retryable patterns
+    retryable_patterns = [
+        '503', 'service unavailable', 'unavailable', 'overloaded',
+        '429', 'rate limit', 'quota',
+        'timeout', 'timed out',
+        'connection', 'network',
+        'temporary', 'transient'
+    ]
+
+    # Check if any retryable pattern is in error message
+    if any(pattern in error_msg for pattern in retryable_patterns):
+        return True
+
+    # Non-retryable conditions
+    non_retryable = ['400', '401', '403', '404', 'json', 'parse', 'api key']
+    if any(pattern in error_msg for pattern in non_retryable):
+        return False
+
+    # Default: don't retry unknown errors
+    return False
+
+
+def _make_api_call_with_retry(client: genai.Client, model: str, contents: str, config: types.GenerateContentConfig):
+    """
+    Make a Gemini API call with automatic retry on transient errors.
+
+    Retry strategy:
+    - 3 attempts total (initial + 2 retries)
+    - Exponential backoff: ~1s, ~2s, ~4s
+    - Only retries on 503, 429, and connection errors
+    """
+    @retry(
+        retry=retry_if_exception(_is_retryable_error),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        reraise=True
+    )
+    def _call():
+        return client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config
+        )
+
+    return _call()
 
 
 class GeminiService:
@@ -115,11 +178,12 @@ class GeminiService:
             if self._system_instruction:
                 config.system_instruction = self._system_instruction
 
-            # Generate response
-            response = self._client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=config,
+            # Use retry wrapper for API call
+            response = _make_api_call_with_retry(
+                self._client,
+                model_name,
+                prompt,
+                config
             )
 
             # Extract text from response
@@ -130,6 +194,12 @@ class GeminiService:
                 data=response_text or "No response returned from Gemini.",
             )
 
+        except RetryError as e:
+            last_exception = e.last_attempt.exception()
+            return GeminiResult(
+                success=False,
+                error=f"Gemini API unavailable after 3 attempts: {str(last_exception)}",
+            )
         except Exception as e:
             return GeminiResult(
                 success=False,
@@ -217,7 +287,8 @@ Return a JSON object with the following structure (use null for any fields you c
     "behaviors": "Brief description of key behaviors and traits",
     "tools": "Tools, systems, or technologies they use",
     "quotes": ["Quote that captures their mindset", "Another representative quote"],
-    "tags": ["tag1", "tag2", "tag3"]
+    "tags": ["tag1", "tag2", "tag3"],
+    "suggested_group": "A concise group name for organizing this persona (e.g., 'Engineering Team', 'Marketing Stakeholders', 'Customer Profiles')"
 }}
 
 Provide ONLY the JSON object, no additional text."""
@@ -226,10 +297,12 @@ Provide ONLY the JSON object, no additional text."""
             model_name = model or self._default_model
             config = types.GenerateContentConfig()
 
-            response = self._client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=config,
+            # Use retry wrapper for API call
+            response = _make_api_call_with_retry(
+                self._client,
+                model_name,
+                prompt,
+                config
             )
 
             response_text = response.text if hasattr(response, 'text') else str(response)
@@ -258,11 +331,16 @@ Provide ONLY the JSON object, no additional text."""
                 behaviors=data.get("behaviors"),
                 tools=data.get("tools"),
                 quotes=data.get("quotes", []),
-                tags=data.get("tags", [])
+                tags=data.get("tags", []),
+                suggested_group=data.get("suggested_group")
             )
 
             return GeminiResult(success=True, data=enrichment)
 
+        except RetryError as e:
+            # Exhausted all retries
+            last_exception = e.last_attempt.exception()
+            return GeminiResult(success=False, error=f"Gemini API unavailable after 3 attempts: {str(last_exception)}")
         except json.JSONDecodeError as e:
             return GeminiResult(success=False, error=f"Failed to parse persona data: {str(e)}")
         except Exception as e:
@@ -328,10 +406,12 @@ Provide ONLY the JSON array, no additional text."""
             model_name = model or self._default_model
             config = types.GenerateContentConfig()
 
-            response = self._client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=config,
+            # Use retry wrapper for API call
+            response = _make_api_call_with_retry(
+                self._client,
+                model_name,
+                prompt,
+                config
             )
 
             response_text = response.text if hasattr(response, 'text') else str(response)
@@ -363,6 +443,9 @@ Provide ONLY the JSON array, no additional text."""
 
             return GeminiResult(success=True, data=suggestions)
 
+        except RetryError as e:
+            last_exception = e.last_attempt.exception()
+            return GeminiResult(success=False, error=f"Gemini API unavailable after 3 attempts: {str(last_exception)}")
         except json.JSONDecodeError as e:
             return GeminiResult(success=False, error=f"Failed to parse suggestions: {str(e)}")
         except Exception as e:
@@ -437,16 +520,21 @@ Respond as {persona.name} would, staying in character. Keep your response concis
             model_name = model or self._default_model
             config = types.GenerateContentConfig()
 
-            response = self._client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=config,
+            # Use retry wrapper for API call
+            response = _make_api_call_with_retry(
+                self._client,
+                model_name,
+                prompt,
+                config
             )
 
             response_text = response.text if hasattr(response, 'text') else str(response)
 
             return GeminiResult(success=True, data=response_text.strip())
 
+        except RetryError as e:
+            last_exception = e.last_attempt.exception()
+            return GeminiResult(success=False, error=f"Gemini API unavailable after 3 attempts: {str(last_exception)}")
         except Exception as e:
             return GeminiResult(success=False, error=f"Gemini API error: {str(e)}")
 
@@ -512,10 +600,12 @@ Provide ONLY the JSON array, no additional text."""
             model_name = model or self._default_model
             config = types.GenerateContentConfig()
 
-            response = self._client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=config,
+            # Use retry wrapper for API call
+            response = _make_api_call_with_retry(
+                self._client,
+                model_name,
+                prompt,
+                config
             )
 
             response_text = response.text if hasattr(response, 'text') else str(response)
@@ -534,6 +624,12 @@ Provide ONLY the JSON array, no additional text."""
 
             return GeminiResult(success=True, data=persona_ids[:max_responders])
 
+        except RetryError as e:
+            # Fallback: return first persona if routing fails after retries
+            last_exception = e.last_attempt.exception()
+            print(f"Routing failed after retries: {last_exception}")
+            first_persona_id = participants[0].id if participants else None
+            return GeminiResult(success=True, data=[first_persona_id] if first_persona_id else [])
         except json.JSONDecodeError as e:
             # Fallback: return first persona if routing fails
             fallback_ids = [participant_personas[0].id] if participant_personas else []

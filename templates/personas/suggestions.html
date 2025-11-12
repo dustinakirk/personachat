@@ -53,7 +53,6 @@
 
         <div class="navigation-actions">
             <a href="{{ url_for('personas.library') }}" class="btn btn-secondary">Back to Library</a>
-            <a href="{{ url_for('network.view', persona_id=persona.id) }}" class="btn btn-primary">View Network</a>
         </div>
 
         {% else %}
@@ -112,6 +111,7 @@
 .suggestion-header h3 {
     margin: 0 0 0.25rem 0;
     color: var(--accent);
+    font-family: var(--font-header);
 }
 
 .suggestion-role {
@@ -164,6 +164,7 @@
 
 .empty-state h2 {
     margin-bottom: 1rem;
+    font-family: var(--font-header);
 }
 
 .empty-state p {
