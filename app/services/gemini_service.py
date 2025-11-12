@@ -521,7 +521,7 @@ Provide ONLY the JSON array, no additional text."""
             # Fallback: return first persona if routing fails after retries
             last_exception = e.last_attempt.exception()
             print(f"Routing failed after retries: {last_exception}")
-            first_persona_id = participants[0].id if participants else None
+            first_persona_id = participant_personas[0].id if participant_personas else None
             return GeminiResult(success=True, data=[first_persona_id] if first_persona_id else [])
         except json.JSONDecodeError as e:
             # Fallback: return first persona if routing fails
