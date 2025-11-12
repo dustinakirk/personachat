@@ -14,7 +14,7 @@ from tenacity import (
     RetryError
 )
 
-from app.models import PersonaEnrichment, Persona
+from app.models import PersonaEnrichment, Persona, RelationshipSuggestion
 
 
 @dataclass
@@ -258,23 +258,49 @@ class GeminiService:
     # PERSONA ENRICHMENT METHODS
     # ========================================================================
 
-    def generate_persona_enrichment(self, description: str, model: Optional[str] = None) -> GeminiResult:
+    def generate_persona_enrichment(self, description: str,
+                                   existing_personas: Optional[List[Persona]] = None,
+                                   model: Optional[str] = None) -> GeminiResult:
         """
         Generate a structured persona profile from a free-form description.
+        When existing personas are provided, AI detects relevant relationships.
 
         Args:
             description: User's free-form persona description
+            existing_personas: List of existing personas to check for relationships
             model: Model to use (defaults to service default)
 
         Returns:
-            GeminiResult containing PersonaEnrichment data or error
+            GeminiResult containing PersonaEnrichment data (with suggested_relationships) or error
         """
         if not self._client:
             return GeminiResult(success=False, error="Gemini API key is missing.")
 
+        # Build context about existing personas
+        existing_context = ""
+        if existing_personas:
+            existing_context = "\n\nEXISTING PERSONAS:\n"
+            for p in existing_personas:
+                existing_context += f"""
+- ID: {p.id}
+  Name: {p.name}
+  Role: {p.role or 'Unknown'}
+  Company: {p.company or 'N/A'}
+  Goals: {', '.join(p.goals[:2]) if p.goals else 'N/A'}
+  Tags: {', '.join(p.tags) if p.tags else 'N/A'}
+"""
+
         prompt = f"""You are a persona creation assistant. Based on the following description, create a detailed persona profile.
 
 Description: {description}
+{existing_context}
+
+Your tasks:
+1. Create a detailed persona profile based on the description
+2. If EXISTING PERSONAS are provided, analyze if this new persona has meaningful relationships with any of them:
+   - Consider location, industry, role connections, collaboration potential
+   - Only suggest relationships that make sense given the context
+   - Provide rich details about shared context and interaction style
 
 Return a JSON object with the following structure (use null for any fields you can't determine):
 {{
@@ -287,8 +313,23 @@ Return a JSON object with the following structure (use null for any fields you c
     "behaviors": "Brief description of key behaviors and traits",
     "tools": "Tools, systems, or technologies they use",
     "quotes": ["Quote that captures their mindset", "Another representative quote"],
-    "tags": ["tag1", "tag2", "tag3"]
+    "tags": ["tag1", "tag2", "tag3"],
+    "suggested_relationships": [
+        {{
+            "persona_id": "UUID of related existing persona",
+            "persona_name": "Name of the related persona",
+            "relationship_type": "colleague|supervisor|subordinate|friend|partner|collaborator|rival|mentor|mentee",
+            "shared_context": "Detailed description of shared history, location, experiences, or background (2-3 sentences)",
+            "interaction_style": "How these personas typically interact, their dynamic (1-2 sentences)"
+        }}
+    ]
 }}
+
+IMPORTANT:
+- Only include suggested_relationships if there are meaningful connections
+- If no relationships make sense, use an empty array []
+- Ensure consistency with existing personas (same city, related industries, etc.)
+- Be specific and detailed in shared_context and interaction_style
 
 Provide ONLY the JSON object, no additional text."""
 
@@ -319,6 +360,20 @@ Provide ONLY the JSON object, no additional text."""
 
             data = json.loads(cleaned_response)
 
+            # Parse suggested relationships
+            suggested_relationships = []
+            if "suggested_relationships" in data and data["suggested_relationships"]:
+                for rel_data in data["suggested_relationships"]:
+                    suggested_relationships.append(
+                        RelationshipSuggestion(
+                            persona_id=rel_data.get("persona_id", ""),
+                            persona_name=rel_data.get("persona_name", ""),
+                            relationship_type=rel_data.get("relationship_type", "colleague"),
+                            shared_context=rel_data.get("shared_context", ""),
+                            interaction_style=rel_data.get("interaction_style", "")
+                        )
+                    )
+
             # Create PersonaEnrichment from parsed data
             enrichment = PersonaEnrichment(
                 name=data.get("name", "Unnamed Persona"),
@@ -330,7 +385,8 @@ Provide ONLY the JSON object, no additional text."""
                 behaviors=data.get("behaviors"),
                 tools=data.get("tools"),
                 quotes=data.get("quotes", []),
-                tags=data.get("tags", [])
+                tags=data.get("tags", []),
+                suggested_relationships=suggested_relationships
             )
 
             return GeminiResult(success=True, data=enrichment)
@@ -354,6 +410,7 @@ Provide ONLY the JSON object, no additional text."""
         user_message: str,
         chat_history: List[Dict[str, Any]],
         other_personas: List[Persona],
+        relationships: Optional[Dict[str, Dict[str, Any]]] = None,
         model: Optional[str] = None
     ) -> GeminiResult:
         """
@@ -364,6 +421,7 @@ Provide ONLY the JSON object, no additional text."""
             user_message: The user's latest message
             chat_history: Recent chat messages for context
             other_personas: Other personas in the conversation
+            relationships: Dict mapping persona_id to relationship data (type, shared_context, interaction_style)
             model: Model to use (defaults to service default)
 
         Returns:
@@ -387,12 +445,22 @@ Tools: {persona.tools or 'Standard workplace tools'}
         if persona.quotes:
             persona_context += f"\nTypical phrases: {', '.join(persona.quotes)}"
 
-        # Build context about other personas
+        # Build context about other personas WITH relationship information
         other_context = ""
         if other_personas:
             other_context = "\n\nOther personas in this conversation:\n"
             for p in other_personas:
-                other_context += f"- {p.name} ({p.role or 'Professional'})\n"
+                other_context += f"- {p.name} ({p.role or 'Professional'})"
+
+                # Add relationship context if available
+                if relationships and p.id in relationships:
+                    rel = relationships[p.id]
+                    other_context += f"\n  Relationship: {rel.get('relationship_type', 'colleague')}"
+                    if rel.get('shared_context'):
+                        other_context += f"\n  Shared context: {rel.get('shared_context')}"
+                    if rel.get('interaction_style'):
+                        other_context += f"\n  How you interact: {rel.get('interaction_style')}"
+                other_context += "\n"
 
         # Build chat history context
         history_context = ""
@@ -407,7 +475,13 @@ Tools: {persona.tools or 'Standard workplace tools'}
 
 User's message: {user_message}
 
-Respond as {persona.name} would, staying in character. Keep your response concise (2-4 sentences) and relevant to the conversation. Reference other personas by name if appropriate."""
+Respond as {persona.name} would, staying in character. Keep your response concise (2-4 sentences) and relevant to the conversation.
+
+IMPORTANT:
+- Reference your relationships with other personas naturally when relevant
+- You can respond to or acknowledge other personas' messages, not just the user
+- Use shared context and interaction styles when addressing personas you have relationships with
+- Stay authentic to your character and the established relationships"""
 
         try:
             model_name = model or self._default_model

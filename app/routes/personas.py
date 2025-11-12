@@ -77,8 +77,9 @@ def library():
 
 @personas_bp.route("/create", methods=["GET", "POST"])
 @login_required
+@requires_services
 def create():
-    """Create a new persona with AI enrichment"""
+    """Create a new persona with AI enrichment and relationship detection"""
     user_id = session["user"]["id"]
 
     if request.method == "GET":
@@ -91,8 +92,18 @@ def create():
         flash("Please provide a persona description.", "error")
         return render_template("personas/create.html")
 
-    # Generate AI enrichment
-    enrichment_result = current_app.gemini_service.generate_persona_enrichment(description)
+    # Fetch existing personas for relationship detection
+    existing_personas = []
+    if g.persona_service:
+        personas_result = g.persona_service.get_personas(user_id)
+        if personas_result.success:
+            existing_personas = personas_result.data.get("personas", [])
+
+    # Generate AI enrichment with existing personas context
+    enrichment_result = current_app.gemini_service.generate_persona_enrichment(
+        description,
+        existing_personas=existing_personas
+    )
 
     if not enrichment_result.success:
         flash(f"AI enrichment failed: {enrichment_result.error}", "error")
@@ -100,7 +111,7 @@ def create():
 
     enrichment = enrichment_result.data
 
-    # Show enrichment for user editing
+    # Show enrichment for user editing (including suggested relationships)
     return render_template(
         "personas/create.html",
         enrichment=enrichment,
@@ -112,7 +123,7 @@ def create():
 @login_required
 @requires_persona_service
 def save():
-    """Save a persona after enrichment (with user edits)"""
+    """Save a persona after enrichment (with user edits and relationships)"""
     user_id = session["user"]["id"]
 
     # Extract form data
@@ -126,6 +137,9 @@ def save():
     tools = request.form.get("tools", "").strip()
     quotes = [q.strip() for q in request.form.getlist("quotes[]") if q.strip()]
     tags = [t.strip() for t in request.form.get("tags", "").split(",") if t.strip()]
+
+    # Extract accepted relationships (checkboxes)
+    accepted_rel_ids = request.form.getlist("relationships[]")
 
     if not name:
         flash("Persona name is required.", "error")
@@ -150,6 +164,50 @@ def save():
 
     if result.success:
         persona_id = result.data.get("id")
+
+        # Create relationships if any were accepted
+        if accepted_rel_ids:
+            relationships_to_create = []
+            for rel_id in accepted_rel_ids:
+                # Extract relationship data from hidden form fields
+                rel_type = request.form.get(f"rel_type_{rel_id}", "colleague")
+                shared_context = request.form.get(f"rel_context_{rel_id}", "")
+                interaction_style = request.form.get(f"rel_style_{rel_id}", "")
+
+                relationships_to_create.append({
+                    "persona_id": rel_id,
+                    "relationship_type": rel_type,
+                    "shared_context": shared_context,
+                    "interaction_style": interaction_style
+                })
+
+            # Create relationships (bidirectional)
+            if relationships_to_create:
+                # Create outgoing relationships
+                rel_result = g.persona_service.create_relationships_bulk(
+                    user_id, persona_id, relationships_to_create
+                )
+
+                # Create reverse relationships for bidirectional
+                reverse_relationships = []
+                for rel in relationships_to_create:
+                    reverse_relationships.append({
+                        "persona_id": persona_id,
+                        "relationship_type": rel["relationship_type"],
+                        "shared_context": rel.get("shared_context", ""),
+                        "interaction_style": rel.get("interaction_style", "")
+                    })
+
+                for rel in relationships_to_create:
+                    g.persona_service.create_relationships_bulk(
+                        user_id, rel["persona_id"], [{
+                            "persona_id": persona_id,
+                            "relationship_type": rel["relationship_type"],
+                            "shared_context": rel.get("shared_context", ""),
+                            "interaction_style": rel.get("interaction_style", "")
+                        }]
+                    )
+
         flash(f"Persona '{name}' created successfully!", "success")
         return redirect(url_for("personas.library", created=persona_id))
     else:

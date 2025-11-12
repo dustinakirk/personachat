@@ -11,7 +11,8 @@ from postgrest import APIError
 from supabase import Client
 from app.models import (
     Persona,
-    PersonaEnrichment
+    PersonaEnrichment,
+    PersonaRelationship
 )
 from app.services.supabase_service import SupabaseResult
 
@@ -198,4 +199,177 @@ class PersonaService:
             return SupabaseResult(False, error=error_dict)
         except Exception as exc:
             logger.exception("Error in delete_persona for persona_id=%s", persona_id)
+            return SupabaseResult(False, error=str(exc))
+
+    # ========================================================================
+    # PERSONA RELATIONSHIP OPERATIONS
+    # ========================================================================
+
+    def create_relationship(self, user_id: str, from_persona_id: str, to_persona_id: str,
+                          relationship_type: str, label: Optional[str] = None,
+                          shared_context: Optional[str] = None,
+                          interaction_style: Optional[str] = None) -> SupabaseResult:
+        """Create a relationship between two personas"""
+        try:
+            data = {
+                "user_id": user_id,
+                "from_persona_id": from_persona_id,
+                "to_persona_id": to_persona_id,
+                "relationship_type": relationship_type,
+                "label": label,
+                "shared_context": shared_context,
+                "interaction_style": interaction_style
+            }
+            result = self._client.table("persona_relationships").insert(data).execute()
+            return SupabaseResult(True, data=result.data[0] if result.data else {})
+        except APIError as api_error:
+            error_payload = api_error.json()
+            logger.error("Supabase error creating relationship from %s to %s: %s",
+                        from_persona_id, to_persona_id, error_payload)
+            return SupabaseResult(False, error=error_payload)
+        except Exception as exc:
+            logger.exception("Unexpected error creating relationship")
+            return SupabaseResult(False, error=str(exc))
+
+    def create_relationships_bulk(self, user_id: str, from_persona_id: str,
+                                 relationships: List[dict]) -> SupabaseResult:
+        """Create multiple relationships at once (for persona creation workflow)"""
+        try:
+            data_list = []
+            for rel in relationships:
+                data_list.append({
+                    "user_id": user_id,
+                    "from_persona_id": from_persona_id,
+                    "to_persona_id": rel["persona_id"],
+                    "relationship_type": rel["relationship_type"],
+                    "label": rel.get("label"),
+                    "shared_context": rel.get("shared_context"),
+                    "interaction_style": rel.get("interaction_style")
+                })
+
+            if not data_list:
+                return SupabaseResult(True, data={"relationships": []})
+
+            result = self._client.table("persona_relationships").insert(data_list).execute()
+            return SupabaseResult(True, data={"relationships": result.data})
+        except APIError as api_error:
+            error_payload = api_error.json()
+            logger.error("Supabase error creating bulk relationships: %s", error_payload)
+            return SupabaseResult(False, error=error_payload)
+        except Exception as exc:
+            logger.exception("Unexpected error creating bulk relationships")
+            return SupabaseResult(False, error=str(exc))
+
+    def get_relationships(self, persona_id: str) -> SupabaseResult:
+        """Get all relationships for a persona (both outgoing and incoming)"""
+        try:
+            # Get outgoing relationships (from this persona to others)
+            outgoing = (
+                self._client.table("persona_relationships")
+                .select("*")
+                .eq("from_persona_id", persona_id)
+                .execute()
+            )
+
+            # Get incoming relationships (from others to this persona)
+            incoming = (
+                self._client.table("persona_relationships")
+                .select("*")
+                .eq("to_persona_id", persona_id)
+                .execute()
+            )
+
+            outgoing_data = outgoing.data if outgoing.data else []
+            incoming_data = incoming.data if incoming.data else []
+
+            # Convert to PersonaRelationship objects
+            outgoing_rels = [PersonaRelationship.from_db_row(row) for row in outgoing_data]
+            incoming_rels = [PersonaRelationship.from_db_row(row) for row in incoming_data]
+
+            return SupabaseResult(True, data={
+                "outgoing": outgoing_rels,
+                "incoming": incoming_rels
+            })
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            logger.error("API error in get_relationships for persona_id=%s: %s",
+                        persona_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
+        except Exception as exc:
+            logger.exception("Error in get_relationships for persona_id=%s", persona_id)
+            return SupabaseResult(False, error=str(exc))
+
+    def get_relationship_with_personas(self, persona_id: str) -> SupabaseResult:
+        """Get relationships with full persona details for display"""
+        try:
+            # Get outgoing relationships with persona details
+            outgoing = (
+                self._client.table("persona_relationships")
+                .select("*, to_persona:to_persona_id(id, name, role, company)")
+                .eq("from_persona_id", persona_id)
+                .execute()
+            )
+
+            # Get incoming relationships with persona details
+            incoming = (
+                self._client.table("persona_relationships")
+                .select("*, from_persona:from_persona_id(id, name, role, company)")
+                .eq("to_persona_id", persona_id)
+                .execute()
+            )
+
+            return SupabaseResult(True, data={
+                "outgoing": outgoing.data if outgoing.data else [],
+                "incoming": incoming.data if incoming.data else []
+            })
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            logger.error("API error in get_relationship_with_personas for persona_id=%s: %s",
+                        persona_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
+        except Exception as exc:
+            logger.exception("Error in get_relationship_with_personas for persona_id=%s",
+                           persona_id)
+            return SupabaseResult(False, error=str(exc))
+
+    def update_relationship(self, from_persona_id: str, to_persona_id: str,
+                          updates: dict) -> SupabaseResult:
+        """Update a relationship"""
+        try:
+            if not updates:
+                return SupabaseResult(False, error="No updates provided")
+
+            result = (
+                self._client.table("persona_relationships")
+                .update(updates)
+                .eq("from_persona_id", from_persona_id)
+                .eq("to_persona_id", to_persona_id)
+                .execute()
+            )
+            return SupabaseResult(True, data=result.data[0] if result.data else {})
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            logger.error("API error updating relationship: %s", error_dict)
+            return SupabaseResult(False, error=error_dict)
+        except Exception as exc:
+            logger.exception("Error updating relationship")
+            return SupabaseResult(False, error=str(exc))
+
+    def delete_relationship(self, from_persona_id: str, to_persona_id: str) -> SupabaseResult:
+        """Delete a relationship"""
+        try:
+            result = (
+                self._client.table("persona_relationships")
+                .delete()
+                .eq("from_persona_id", from_persona_id)
+                .eq("to_persona_id", to_persona_id)
+                .execute()
+            )
+            return SupabaseResult(True, data={"deleted": True})
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            logger.error("API error deleting relationship: %s", error_dict)
+            return SupabaseResult(False, error=error_dict)
+        except Exception as exc:
+            logger.exception("Error deleting relationship")
             return SupabaseResult(False, error=str(exc))

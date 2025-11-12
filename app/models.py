@@ -122,6 +122,65 @@ class Message:
 
 
 @dataclass
+class PersonaRelationship:
+    """A relationship between two personas"""
+    id: str
+    user_id: str
+    from_persona_id: str
+    to_persona_id: str
+    relationship_type: str  # e.g., colleague, supervisor, friend, rival
+    label: Optional[str] = None
+    shared_context: Optional[str] = None  # Shared history, location, background
+    interaction_style: Optional[str] = None  # How they typically interact
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    @staticmethod
+    def from_db_row(row: dict):
+        """Create PersonaRelationship from database row"""
+        return PersonaRelationship(
+            id=row['id'],
+            user_id=row['user_id'],
+            from_persona_id=row['from_persona_id'],
+            to_persona_id=row['to_persona_id'],
+            relationship_type=row['relationship_type'],
+            label=row.get('label'),
+            shared_context=row.get('shared_context'),
+            interaction_style=row.get('interaction_style'),
+            notes=row.get('notes'),
+            created_at=row.get('created_at'),
+            updated_at=row.get('updated_at')
+        )
+
+    def to_dict(self):
+        """Convert to dictionary for JSON serialization"""
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'from_persona_id': self.from_persona_id,
+            'to_persona_id': self.to_persona_id,
+            'relationship_type': self.relationship_type,
+            'label': self.label,
+            'shared_context': self.shared_context,
+            'interaction_style': self.interaction_style,
+            'notes': self.notes,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+@dataclass
+class RelationshipSuggestion:
+    """AI-suggested relationship between personas during enrichment"""
+    persona_id: str
+    persona_name: str
+    relationship_type: str
+    shared_context: str
+    interaction_style: str
+
+
+@dataclass
 class PersonaEnrichment:
     """AI-generated persona enrichment from user description"""
     name: str
@@ -134,3 +193,4 @@ class PersonaEnrichment:
     tools: Optional[str] = None
     quotes: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
+    suggested_relationships: List[RelationshipSuggestion] = field(default_factory=list)

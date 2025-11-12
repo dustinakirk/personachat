@@ -93,6 +93,34 @@ def create():
         return redirect(url_for("conversations.create"))
 
 
+@conversations_bp.route("/quick-start/<persona_id>", methods=["POST"])
+@login_required
+@requires_services
+def quick_start(persona_id):
+    """Quick-start a conversation with a single persona"""
+    user_id = session["user"]["id"]
+
+    # Verify persona exists and belongs to user
+    persona_result = g.persona_service.get_persona(persona_id)
+    if not persona_result.success or persona_result.data.user_id != user_id:
+        flash("Persona not found.", "error")
+        return redirect(url_for("personas.library"))
+
+    # Create conversation with single persona
+    result = g.conversation_service.create_conversation(
+        user_id=user_id,
+        title="New Conversation",
+        participant_ids=[persona_id],
+    )
+
+    if result.success:
+        conversation_id = result.data.get("id")
+        return redirect(url_for("conversations.chat", conversation_id=conversation_id))
+    else:
+        flash(f"Error creating conversation: {result.error}", "error")
+        return redirect(url_for("personas.library"))
+
+
 # ============================================================================
 # CHAT INTERFACE
 # ============================================================================
@@ -227,11 +255,26 @@ def send_message(conversation_id):
     other_personas = [p for p in participant_personas if p not in responders]
 
     for persona in responders:
+        # Fetch relationships for this persona with other participants
+        relationships_dict = {}
+        if g.persona_service:
+            rels_result = g.persona_service.get_relationships(persona.id)
+            if rels_result.success:
+                # Build a dict mapping persona_id to relationship data
+                for rel in rels_result.data.get("outgoing", []):
+                    if rel.to_persona_id in [p.id for p in other_personas]:
+                        relationships_dict[rel.to_persona_id] = {
+                            "relationship_type": rel.relationship_type,
+                            "shared_context": rel.shared_context,
+                            "interaction_style": rel.interaction_style
+                        }
+
         response_result = current_app.gemini_service.generate_persona_response(
             persona=persona,
             user_message=message,
             chat_history=chat_history,
-            other_personas=other_personas
+            other_personas=other_personas,
+            relationships=relationships_dict if relationships_dict else None
         )
 
         if response_result.success:
