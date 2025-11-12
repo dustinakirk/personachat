@@ -48,17 +48,7 @@
             Our AI has generated a structured profile. Review and edit any fields before saving.
         </p>
 
-        {% if enrichment.suggested_group %}
-        <div class="suggested-group-badge">
-            <span class="badge-label">Suggested Group:</span>
-            <span class="badge-value">{{ enrichment.suggested_group }}</span>
-        </div>
-        {% endif %}
-
         <form method="POST" action="{{ url_for('personas.save') }}">
-            <input type="hidden" name="suggested_group" value="{{ enrichment.suggested_group or '' }}">
-            <input type="hidden" name="preset_group_id" value="{{ preset_group_id or '' }}">
-
             <div class="form-row">
                 <div class="form-group">
                     <label for="name">Name: *</label>
@@ -239,16 +229,6 @@ textarea.form-control {
     gap: 0.75rem;
 }
 
-.suggested-group-badge .badge-label {
-    color: var(--text-dim);
-    font-size: 0.9rem;
-}
-
-.suggested-group-badge .badge-value {
-    color: var(--accent);
-    font-weight: 500;
-}
-
 /* Loading spinner */
 @keyframes spin {
     0% { transform: rotate(0deg); }
@@ -280,7 +260,7 @@ textarea.form-control {
 <script>
 // Handle Generate Persona Profile button loading state
 document.addEventListener('DOMContentLoaded', function() {
-    const form = document.querySelector('form[action="{{ url_for(\'personas.create\') }}"]');
+    const form = document.querySelector("form[action='{{ url_for('personas.create') }}']");
     if (form) {
         form.addEventListener('submit', function(e) {
             const btn = document.getElementById('generateBtn');
@@ -304,37 +284,6 @@ function addQuote() {
     input.className = 'form-control mb-2';
     input.placeholder = 'Another typical phrase';
     container.appendChild(input);
-}
-
-async function createNewGroup() {
-    const name = prompt('Enter new group name:');
-    if (!name) return;
-
-    try {
-        const response = await fetch('/personas/groups/create', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: `name=${encodeURIComponent(name)}`
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            // Add to dropdown
-            const select = document.getElementById('group_id');
-            const option = document.createElement('option');
-            option.value = data.group.id;
-            option.textContent = data.group.name;
-            option.selected = true;
-            select.appendChild(option);
-        } else {
-            alert('Error creating group: ' + data.error);
-        }
-    } catch (error) {
-        alert('Error creating group: ' + error.message);
-    }
 }
 </script>
 {% endblock %}

@@ -4,8 +4,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from supabase import Client, create_client
-from supabase.lib.client_options import ClientOptions
+from supabase import Client, create_client, ClientOptions
+from supabase_auth import SyncMemoryStorage
 
 logger = logging.getLogger(__name__)
 
@@ -51,15 +51,22 @@ class SupabaseService:
         logger.info(f"Creating authenticated client with token: {token_preview}")
 
         try:
+            # Create client with user's access token in Authorization header
+            # Do NOT set apikey in headers - let create_client() handle it
+            headers = {
+                "Authorization": f"Bearer {access_token}"
+            }
             options = ClientOptions(
-                auto_refresh_token=False,
-                persist_session=False,
+                headers=headers,
+                storage=SyncMemoryStorage(),
+                auto_refresh_token=False,  # Server-side, we manage tokens
+                persist_session=False       # Don't persist session state
             )
             client = create_client(self._url, self._key, options=options)
-            bearer = f"Bearer {access_token}"
-            client.options.headers["Authorization"] = bearer
-            # Ensure the underlying PostgREST client uses the user's token
+
+            # Set auth token on postgrest client for RLS policies
             client.postgrest.auth(access_token)
+
             logger.info("Successfully created authenticated Supabase client")
             return client
         except Exception as exc:  # pylint: disable=broad-except

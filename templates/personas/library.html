@@ -38,13 +38,13 @@
         </div>
     </div>
 
-    <!-- Search and Filter -->
+    <!-- Search -->
     <div class="filters-panel">
         <form method="get" action="{{ url_for('personas.library') }}" class="search-form">
             <input
                 type="text"
                 name="q"
-                placeholder="Search personas by name, role, or company..."
+                placeholder="Search personas by name, role, company, or tags..."
                 value="{{ search_query }}"
                 class="search-input"
             />
@@ -53,95 +53,24 @@
             <a href="{{ url_for('personas.library') }}" class="btn btn-secondary">Clear</a>
             {% endif %}
         </form>
-
-        <div class="filter-group">
-            <label for="group-filter">Filter by Group:</label>
-            <form method="get" action="{{ url_for('personas.library') }}" id="group-filter-form">
-                <select name="group" id="group-filter" onchange="this.form.submit()">
-                    <option value="">All Groups</option>
-                    {% for group in groups %}
-                    <option value="{{ group.id }}" {% if selected_group == group.id %}selected{% endif %}>
-                        {{ group.name }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </form>
-        </div>
     </div>
 
-    <!-- Grouped View (default) -->
-    {% if groups_with_personas is not none %}
-        {% if groups_with_personas or ungrouped_personas %}
-            <!-- Groups -->
-            {% for item in groups_with_personas %}
-            <div class="group-section">
-                <div class="group-header" onclick="toggleGroup('{{ item.group.id }}')">
-                    <div class="group-info">
-                        <h2>{{ item.group.name }}</h2>
-                        <span class="group-count">{{ item.personas|length }} persona{{ 's' if item.personas|length != 1 else '' }}</span>
-                    </div>
-                    <div class="group-actions">
-                        <a href="{{ url_for('personas.create', group_id=item.group.id) }}" class="btn btn-small btn-primary" onclick="event.stopPropagation()">
-                            + Add Persona
-                        </a>
-                        <span class="collapse-icon" id="icon-{{ item.group.id }}">▼</span>
-                    </div>
-                </div>
-                <div class="group-content" id="content-{{ item.group.id }}">
-                    <div class="personas-grid">
-                        {% for persona in item.personas %}
-                        {% include 'personas/_persona_card.html' %}
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
-
-            <!-- Ungrouped Personas -->
-            {% if ungrouped_personas %}
-            <div class="group-section">
-                <div class="group-header" onclick="toggleGroup('ungrouped')">
-                    <div class="group-info">
-                        <h2>Uncategorized</h2>
-                        <span class="group-count">{{ ungrouped_personas|length }} persona{{ 's' if ungrouped_personas|length != 1 else '' }}</span>
-                    </div>
-                    <div class="group-actions">
-                        <span class="collapse-icon" id="icon-ungrouped">▼</span>
-                    </div>
-                </div>
-                <div class="group-content" id="content-ungrouped">
-                    <div class="personas-grid">
-                        {% for persona in ungrouped_personas %}
-                        {% include 'personas/_persona_card.html' %}
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-        {% else %}
-            <div class="empty-state">
-                <h2>No personas yet</h2>
-                <p>Get started by creating your first persona!</p>
-                <a href="{{ url_for('personas.create') }}" class="btn btn-primary">Create Your First Persona</a>
-            </div>
+    <!-- Personas List -->
+    {% if personas %}
+    <div class="personas-grid">
+        {% for persona in personas %}
+        {% include 'personas/_persona_card.html' %}
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <h2>{% if search_query %}No personas found{% else %}No personas yet{% endif %}</h2>
+        <p>{% if search_query %}No personas match your search. Try different keywords or{% else %}Get started by creating your first persona!{% endif %}</p>
+        <a href="{{ url_for('personas.create') }}" class="btn btn-primary">Create {% if search_query %}New {% endif %}Persona</a>
+        {% if search_query %}
+        <a href="{{ url_for('personas.library') }}" class="btn btn-secondary">View All Personas</a>
         {% endif %}
-    {% endif %}
-
-    <!-- Search/Filter Results View -->
-    {% if personas is not none %}
-        {% if personas %}
-        <div class="personas-grid">
-            {% for persona in personas %}
-            {% include 'personas/_persona_card.html' %}
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">
-            <h2>No personas found</h2>
-            <p>{% if search_query %}No personas match your search.{% else %}No personas in this group.{% endif %}</p>
-            <a href="{{ url_for('personas.library') }}" class="btn btn-secondary">View All Personas</a>
-        </div>
-        {% endif %}
+    </div>
     {% endif %}
 </div>
 
@@ -269,91 +198,6 @@
     color: var(--text);
 }
 
-.filter-group {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-}
-
-.filter-group select {
-    padding: 0.5rem 1rem;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text);
-}
-
-.group-section {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 1.5rem;
-    overflow: hidden;
-}
-
-.group-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1.5rem;
-    cursor: pointer;
-    background: var(--panel);
-    transition: background 0.2s;
-}
-
-.group-header:hover {
-    background: var(--bg);
-}
-
-.group-info {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-
-.group-info h2 {
-    margin: 0;
-    font-size: 1.25rem;
-    color: var(--accent);
-    font-family: var(--font-header);
-}
-
-.group-count {
-    background: var(--bg);
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
-    font-size: 0.85rem;
-    color: var(--text-dim);
-}
-
-.group-actions {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-
-.collapse-icon {
-    color: var(--text-dim);
-    transition: transform 0.3s;
-    font-size: 0.75rem;
-}
-
-.collapse-icon.collapsed {
-    transform: rotate(-90deg);
-}
-
-.group-content {
-    padding: 0 1.5rem 1.5rem 1.5rem;
-    max-height: 2000px;
-    overflow: hidden;
-    transition: max-height 0.3s ease-out, padding 0.3s ease-out;
-}
-
-.group-content.collapsed {
-    max-height: 0;
-    padding: 0 1.5rem;
-}
-
 .personas-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -378,14 +222,4 @@
     margin-bottom: 2rem;
 }
 </style>
-
-<script>
-function toggleGroup(groupId) {
-    const content = document.getElementById(`content-${groupId}`);
-    const icon = document.getElementById(`icon-${groupId}`);
-
-    content.classList.toggle('collapsed');
-    icon.classList.toggle('collapsed');
-}
-</script>
 {% endblock %}

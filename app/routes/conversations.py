@@ -5,7 +5,7 @@ Handles conversation creation, messaging, participant management,
 and streaming responses from multiple personas.
 """
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, session, jsonify, Response
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, session, jsonify, Response, g
 from functools import wraps
 import json
 import re
@@ -36,7 +36,7 @@ def list_conversations():
     """List recent conversations"""
     user_id = session["user"]["id"]
 
-    result = current_app.conversation_service.get_user_conversations(user_id, limit=20)
+    result = g.conversation_service.get_user_conversations(user_id, limit=20)
 
     if result.success:
         conversations = result.data.get("conversations", [])
@@ -59,7 +59,7 @@ def create():
 
     if request.method == "GET":
         # Get available personas for selection
-        personas_result = current_app.persona_service.get_personas(user_id)
+        personas_result = g.persona_service.get_personas(user_id)
         personas = personas_result.data.get("personas", []) if personas_result.success else []
 
         return render_template("conversations/create.html", personas=personas)
@@ -76,10 +76,10 @@ def create():
         return redirect(url_for("conversations.create"))
 
     # Create conversation
-    result = current_app.conversation_service.create_conversation(
+    result = g.conversation_service.create_conversation(
         user_id=user_id,
         title="New Conversation",
-        participant_ids=participant_ids
+        participant_ids=participant_ids,
     )
 
     if result.success:
@@ -101,7 +101,7 @@ def chat(conversation_id):
     user_id = session["user"]["id"]
 
     # Verify conversation belongs to user
-    conv_result = current_app.conversation_service.get_conversation(conversation_id)
+    conv_result = g.conversation_service.get_conversation(conversation_id)
     if not conv_result.success or conv_result.data.get("user_id") != user_id:
         flash("Conversation not found.", "error")
         return redirect(url_for("conversations.list_conversations"))
@@ -109,15 +109,15 @@ def chat(conversation_id):
     conversation = conv_result.data
 
     # Get participants
-    participants_result = current_app.conversation_service.get_participants(conversation_id)
+    participants_result = g.conversation_service.get_participants(conversation_id)
     participants = participants_result.data.get("participants", []) if participants_result.success else []
 
     # Get messages
-    messages_result = current_app.conversation_service.get_messages(conversation_id)
+    messages_result = g.conversation_service.get_messages(conversation_id)
     messages = messages_result.data.get("messages", []) if messages_result.success else []
 
     # Get all user's personas for adding more participants
-    all_personas_result = current_app.persona_service.get_personas(user_id)
+    all_personas_result = g.persona_service.get_personas(user_id)
     all_personas = all_personas_result.data.get("personas", []) if all_personas_result.success else []
 
     return render_template(
@@ -144,22 +144,22 @@ def send_message(conversation_id):
         return jsonify({"success": False, "error": "Message is required"}), 400
 
     # Verify conversation ownership
-    conv_result = current_app.conversation_service.get_conversation(conversation_id)
+    conv_result = g.conversation_service.get_conversation(conversation_id)
     if not conv_result.success or conv_result.data.get("user_id") != user_id:
         return jsonify({"success": False, "error": "Conversation not found"}), 404
 
     # Save user message
-    user_msg_result = current_app.conversation_service.add_user_message(
+    user_msg_result = g.conversation_service.add_user_message(
         conversation_id=conversation_id,
         user_id=user_id,
-        content=message
+        content=message,
     )
 
     if not user_msg_result.success:
         return jsonify({"success": False, "error": user_msg_result.error}), 500
 
     # Get active participants
-    participants_result = current_app.conversation_service.get_participants(conversation_id)
+    participants_result = g.conversation_service.get_participants(conversation_id)
     if not participants_result.success:
         return jsonify({"success": False, "error": "Failed to get participants"}), 500
 
@@ -186,7 +186,7 @@ def send_message(conversation_id):
                 break
 
     # Get chat history for context
-    messages_result = current_app.conversation_service.get_messages(conversation_id, limit=20)
+    messages_result = g.conversation_service.get_messages(conversation_id, limit=20)
     chat_history = []
     if messages_result.success:
         for msg in messages_result.data.get("messages", []):
@@ -233,11 +233,11 @@ def send_message(conversation_id):
             response_text = response_result.data
 
             # Save persona response
-            current_app.conversation_service.add_persona_message(
+            g.conversation_service.add_persona_message(
                 conversation_id=conversation_id,
                 persona_id=persona.id,
-                content=response_text
-            )
+                content=response_text,
+                    )
 
             responses.append({
                 "persona_id": persona.id,
@@ -262,7 +262,7 @@ def add_participant(conversation_id):
     if not persona_id:
         return jsonify({"success": False, "error": "Persona ID is required"}), 400
 
-    result = current_app.conversation_service.add_participant(conversation_id, persona_id)
+    result = g.conversation_service.add_participant(conversation_id, persona_id)
 
     if result.success:
         return jsonify({"success": True})
@@ -279,7 +279,7 @@ def remove_participant(conversation_id):
     if not persona_id:
         return jsonify({"success": False, "error": "Persona ID is required"}), 400
 
-    result = current_app.conversation_service.remove_participant(conversation_id, persona_id)
+    result = g.conversation_service.remove_participant(conversation_id, persona_id)
 
     if result.success:
         return jsonify({"success": True})
@@ -297,7 +297,7 @@ def toggle_participant(conversation_id):
     if not persona_id:
         return jsonify({"success": False, "error": "Persona ID is required"}), 400
 
-    result = current_app.conversation_service.toggle_participant(conversation_id, persona_id, active)
+    result = g.conversation_service.toggle_participant(conversation_id, persona_id, active)
 
     if result.success:
         return jsonify({"success": True})
@@ -316,11 +316,11 @@ def delete_conversation(conversation_id):
     user_id = session["user"]["id"]
 
     # Verify ownership
-    conv_result = current_app.conversation_service.get_conversation(conversation_id)
+    conv_result = g.conversation_service.get_conversation(conversation_id)
     if not conv_result.success or conv_result.data.get("user_id") != user_id:
         return jsonify({"success": False, "error": "Conversation not found"}), 404
 
-    result = current_app.conversation_service.delete_conversation(conversation_id)
+    result = g.conversation_service.delete_conversation(conversation_id)
 
     if result.success:
         return jsonify({"success": True})
@@ -337,7 +337,7 @@ def update_title(conversation_id):
     if not title:
         return jsonify({"success": False, "error": "Title is required"}), 400
 
-    result = current_app.conversation_service.update_conversation_title(conversation_id, title)
+    result = g.conversation_service.update_conversation_title(conversation_id, title)
 
     if result.success:
         return jsonify({"success": True})

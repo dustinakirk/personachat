@@ -14,7 +14,7 @@ from tenacity import (
     RetryError
 )
 
-from app.models import PersonaEnrichment, PersonaSuggestion, Persona
+from app.models import PersonaEnrichment, Persona
 
 
 @dataclass
@@ -287,8 +287,7 @@ Return a JSON object with the following structure (use null for any fields you c
     "behaviors": "Brief description of key behaviors and traits",
     "tools": "Tools, systems, or technologies they use",
     "quotes": ["Quote that captures their mindset", "Another representative quote"],
-    "tags": ["tag1", "tag2", "tag3"],
-    "suggested_group": "A concise group name for organizing this persona (e.g., 'Engineering Team', 'Marketing Stakeholders', 'Customer Profiles')"
+    "tags": ["tag1", "tag2", "tag3"]
 }}
 
 Provide ONLY the JSON object, no additional text."""
@@ -331,8 +330,7 @@ Provide ONLY the JSON object, no additional text."""
                 behaviors=data.get("behaviors"),
                 tools=data.get("tools"),
                 quotes=data.get("quotes", []),
-                tags=data.get("tags", []),
-                suggested_group=data.get("suggested_group")
+                tags=data.get("tags", [])
             )
 
             return GeminiResult(success=True, data=enrichment)
@@ -343,111 +341,6 @@ Provide ONLY the JSON object, no additional text."""
             return GeminiResult(success=False, error=f"Gemini API unavailable after 3 attempts: {str(last_exception)}")
         except json.JSONDecodeError as e:
             return GeminiResult(success=False, error=f"Failed to parse persona data: {str(e)}")
-        except Exception as e:
-            return GeminiResult(success=False, error=f"Gemini API error: {str(e)}")
-
-    def suggest_related_personas(
-        self,
-        focal_persona: Persona,
-        existing_personas: List[Persona],
-        count: int = 3,
-        model: Optional[str] = None
-    ) -> GeminiResult:
-        """
-        Generate suggestions for related personas based on a focal persona.
-
-        Args:
-            focal_persona: The persona to find relationships for
-            existing_personas: List of existing personas to avoid duplicates
-            count: Number of suggestions to generate (default: 3)
-            model: Model to use (defaults to service default)
-
-        Returns:
-            GeminiResult containing list of PersonaSuggestion objects or error
-        """
-        if not self._client:
-            return GeminiResult(success=False, error="Gemini API key is missing.")
-
-        # Build context about focal persona
-        persona_context = f"""
-Focal Persona:
-- Name: {focal_persona.name}
-- Role: {focal_persona.role or 'Unknown'}
-- Company: {focal_persona.company or 'Unknown'}
-- Goals: {', '.join(focal_persona.goals) if focal_persona.goals else 'None specified'}
-- Pains: {', '.join(focal_persona.pains) if focal_persona.pains else 'None specified'}
-"""
-
-        # Build context about existing personas to avoid duplicates
-        existing_context = ""
-        if existing_personas:
-            existing_names = [p.name for p in existing_personas]
-            existing_context = f"\n\nExisting personas (avoid suggesting duplicates):\n- " + "\n- ".join(existing_names)
-
-        prompt = f"""You are a persona network assistant. Suggest {count} related personas who would interact with the focal persona.
-
-{persona_context}{existing_context}
-
-Return a JSON array with {count} suggestions, each with this structure:
-[
-    {{
-        "name": "Full name of suggested persona",
-        "role": "Job title or role",
-        "company": "Company name (can be same or different from focal persona)",
-        "relationship_type": "One of: manager, peer, collaborator, vendor, customer, stakeholder, family, friend",
-        "relationship_label": "Specific label like 'Reports to', 'Partners with', etc.",
-        "rationale": "Brief explanation of why this persona is relevant (1-2 sentences)"
-    }}
-]
-
-Provide ONLY the JSON array, no additional text."""
-
-        try:
-            model_name = model or self._default_model
-            config = types.GenerateContentConfig()
-
-            # Use retry wrapper for API call
-            response = _make_api_call_with_retry(
-                self._client,
-                model_name,
-                prompt,
-                config
-            )
-
-            response_text = response.text if hasattr(response, 'text') else str(response)
-
-            # Clean and parse JSON
-            cleaned_response = response_text.strip()
-            if cleaned_response.startswith("```json"):
-                cleaned_response = cleaned_response[7:]
-            if cleaned_response.startswith("```"):
-                cleaned_response = cleaned_response[3:]
-            if cleaned_response.endswith("```"):
-                cleaned_response = cleaned_response[:-3]
-            cleaned_response = cleaned_response.strip()
-
-            data = json.loads(cleaned_response)
-
-            # Create PersonaSuggestion objects
-            suggestions = []
-            for item in data:
-                suggestion = PersonaSuggestion(
-                    name=item.get("name", "Unknown"),
-                    role=item.get("role", ""),
-                    relationship_type=item.get("relationship_type", "peer"),
-                    relationship_label=item.get("relationship_label", "Related to"),
-                    rationale=item.get("rationale", ""),
-                    company=item.get("company")
-                )
-                suggestions.append(suggestion)
-
-            return GeminiResult(success=True, data=suggestions)
-
-        except RetryError as e:
-            last_exception = e.last_attempt.exception()
-            return GeminiResult(success=False, error=f"Gemini API unavailable after 3 attempts: {str(last_exception)}")
-        except json.JSONDecodeError as e:
-            return GeminiResult(success=False, error=f"Failed to parse suggestions: {str(e)}")
         except Exception as e:
             return GeminiResult(success=False, error=f"Gemini API error: {str(e)}")
 

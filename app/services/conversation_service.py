@@ -5,17 +5,21 @@ Handles conversation creation, participant management, message routing,
 and autosave functionality for multi-persona chat sessions.
 """
 
+import logging
 from typing import List, Dict, Any, Optional
+from postgrest import APIError
 from supabase import Client
 from app.models import Persona, Message
 from app.services.supabase_service import SupabaseResult
+
+logger = logging.getLogger(__name__)
 
 
 class ConversationService:
     """Service for multi-persona conversation operations"""
 
-    def __init__(self, supabase_client: Client):
-        self._client = supabase_client
+    def __init__(self, authenticated_client: Client):
+        self._client = authenticated_client  # Authenticated client for all operations
 
     # ========================================================================
     # CONVERSATION CRUD
@@ -56,7 +60,15 @@ class ConversationService:
                 self._client.table("conversation_participants").insert(participants).execute()
 
             return SupabaseResult(True, data=conversation)
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            error_code = error_dict.get('code', '')
+            if error_code in ['PGRST301', 'PGRST302', 'PGRST303'] or 'JWT expired' in str(api_error):
+                raise
+            logger.error("API error in create_conversation for user_id=%s: %s", user_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
         except Exception as exc:
+            logger.exception("Error in create_conversation for user_id=%s", user_id)
             return SupabaseResult(False, error=str(exc))
 
     def get_conversation(self, conversation_id: str) -> SupabaseResult:
@@ -70,7 +82,15 @@ class ConversationService:
                 .execute()
             )
             return SupabaseResult(True, data=result.data if result.data else {})
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            error_code = error_dict.get('code', '')
+            if error_code in ['PGRST301', 'PGRST302', 'PGRST303'] or 'JWT expired' in str(api_error):
+                raise
+            logger.error("API error in get_conversation for conversation_id=%s: %s", conversation_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
         except Exception as exc:
+            logger.exception("Error in get_conversation for conversation_id=%s", conversation_id)
             return SupabaseResult(False, error=str(exc))
 
     def get_user_conversations(self, user_id: str, limit: int = 20) -> SupabaseResult:
@@ -86,7 +106,15 @@ class ConversationService:
             )
             conversations = result.data if result.data else []
             return SupabaseResult(True, data={"conversations": conversations})
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            error_code = error_dict.get('code', '')
+            if error_code in ['PGRST301', 'PGRST302', 'PGRST303'] or 'JWT expired' in str(api_error):
+                raise
+            logger.error("API error in get_user_conversations for user_id=%s: %s", user_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
         except Exception as exc:
+            logger.exception("Error in get_user_conversations for user_id=%s", user_id)
             return SupabaseResult(False, error=str(exc))
 
     def update_conversation_title(self, conversation_id: str, title: str) -> SupabaseResult:
@@ -99,7 +127,15 @@ class ConversationService:
                 .execute()
             )
             return SupabaseResult(True, data=result.data[0] if result.data else {})
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            error_code = error_dict.get('code', '')
+            if error_code in ['PGRST301', 'PGRST302', 'PGRST303'] or 'JWT expired' in str(api_error):
+                raise
+            logger.error("API error in update_conversation_title for conversation_id=%s: %s", conversation_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
         except Exception as exc:
+            logger.exception("Error in update_conversation_title for conversation_id=%s", conversation_id)
             return SupabaseResult(False, error=str(exc))
 
     def delete_conversation(self, conversation_id: str) -> SupabaseResult:
@@ -107,7 +143,15 @@ class ConversationService:
         try:
             result = self._client.table("conversations").delete().eq("id", conversation_id).execute()
             return SupabaseResult(True, data={"deleted": True})
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            error_code = error_dict.get('code', '')
+            if error_code in ['PGRST301', 'PGRST302', 'PGRST303'] or 'JWT expired' in str(api_error):
+                raise
+            logger.error("API error in delete_conversation for conversation_id=%s: %s", conversation_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
         except Exception as exc:
+            logger.exception("Error in delete_conversation for conversation_id=%s", conversation_id)
             return SupabaseResult(False, error=str(exc))
 
     # ========================================================================
@@ -124,7 +168,15 @@ class ConversationService:
             }
             result = self._client.table("conversation_participants").insert(data).execute()
             return SupabaseResult(True, data=result.data[0] if result.data else {})
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            error_code = error_dict.get('code', '')
+            if error_code in ['PGRST301', 'PGRST302', 'PGRST303'] or 'JWT expired' in str(api_error):
+                raise
+            logger.error("API error in add_participant for conversation_id=%s: %s", conversation_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
         except Exception as exc:
+            logger.exception("Error in add_participant for conversation_id=%s", conversation_id)
             return SupabaseResult(False, error=str(exc))
 
     def remove_participant(self, conversation_id: str, persona_id: str) -> SupabaseResult:
@@ -138,7 +190,15 @@ class ConversationService:
                 .execute()
             )
             return SupabaseResult(True, data={"removed": True})
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            error_code = error_dict.get('code', '')
+            if error_code in ['PGRST301', 'PGRST302', 'PGRST303'] or 'JWT expired' in str(api_error):
+                raise
+            logger.error("API error in remove_participant for conversation_id=%s: %s", conversation_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
         except Exception as exc:
+            logger.exception("Error in remove_participant for conversation_id=%s", conversation_id)
             return SupabaseResult(False, error=str(exc))
 
     def toggle_participant(self, conversation_id: str, persona_id: str, active: bool) -> SupabaseResult:
@@ -152,7 +212,15 @@ class ConversationService:
                 .execute()
             )
             return SupabaseResult(True, data=result.data[0] if result.data else {})
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            error_code = error_dict.get('code', '')
+            if error_code in ['PGRST301', 'PGRST302', 'PGRST303'] or 'JWT expired' in str(api_error):
+                raise
+            logger.error("API error in toggle_participant for conversation_id=%s: %s", conversation_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
         except Exception as exc:
+            logger.exception("Error in toggle_participant for conversation_id=%s", conversation_id)
             return SupabaseResult(False, error=str(exc))
 
     def get_participants(self, conversation_id: str) -> SupabaseResult:
@@ -194,7 +262,15 @@ class ConversationService:
                     })
 
             return SupabaseResult(True, data={"participants": participants})
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            error_code = error_dict.get('code', '')
+            if error_code in ['PGRST301', 'PGRST302', 'PGRST303'] or 'JWT expired' in str(api_error):
+                raise
+            logger.error("API error in get_participants for conversation_id=%s: %s", conversation_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
         except Exception as exc:
+            logger.exception("Error in get_participants for conversation_id=%s", conversation_id)
             return SupabaseResult(False, error=str(exc))
 
     # ========================================================================
@@ -216,7 +292,15 @@ class ConversationService:
             self._client.table("conversations").update({"updated_at": "NOW()"}).eq("id", conversation_id).execute()
 
             return SupabaseResult(True, data=result.data[0] if result.data else {})
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            error_code = error_dict.get('code', '')
+            if error_code in ['PGRST301', 'PGRST302', 'PGRST303'] or 'JWT expired' in str(api_error):
+                raise
+            logger.error("API error in add_user_message for conversation_id=%s: %s", conversation_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
         except Exception as exc:
+            logger.exception("Error in add_user_message for conversation_id=%s", conversation_id)
             return SupabaseResult(False, error=str(exc))
 
     def add_persona_message(self, conversation_id: str, persona_id: str, content: str) -> SupabaseResult:
@@ -234,7 +318,15 @@ class ConversationService:
             self._client.table("conversations").update({"updated_at": "NOW()"}).eq("id", conversation_id).execute()
 
             return SupabaseResult(True, data=result.data[0] if result.data else {})
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            error_code = error_dict.get('code', '')
+            if error_code in ['PGRST301', 'PGRST302', 'PGRST303'] or 'JWT expired' in str(api_error):
+                raise
+            logger.error("API error in add_persona_message for conversation_id=%s: %s", conversation_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
         except Exception as exc:
+            logger.exception("Error in add_persona_message for conversation_id=%s", conversation_id)
             return SupabaseResult(False, error=str(exc))
 
     def get_messages(self, conversation_id: str, limit: int = 100) -> SupabaseResult:
@@ -278,7 +370,15 @@ class ConversationService:
                 enriched_messages.append(enriched_msg)
 
             return SupabaseResult(True, data={"messages": enriched_messages})
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            error_code = error_dict.get('code', '')
+            if error_code in ['PGRST301', 'PGRST302', 'PGRST303'] or 'JWT expired' in str(api_error):
+                raise
+            logger.error("API error in get_messages for conversation_id=%s: %s", conversation_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
         except Exception as exc:
+            logger.exception("Error in get_messages for conversation_id=%s", conversation_id)
             return SupabaseResult(False, error=str(exc))
 
     # ========================================================================
@@ -353,5 +453,13 @@ class ConversationService:
             }
 
             return SupabaseResult(True, data=summary)
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            error_code = error_dict.get('code', '')
+            if error_code in ['PGRST301', 'PGRST302', 'PGRST303'] or 'JWT expired' in str(api_error):
+                raise
+            logger.error("API error in get_conversation_summary for conversation_id=%s: %s", conversation_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
         except Exception as exc:
+            logger.exception("Error in get_conversation_summary for conversation_id=%s", conversation_id)
             return SupabaseResult(False, error=str(exc))

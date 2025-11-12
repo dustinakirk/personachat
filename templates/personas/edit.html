@@ -35,18 +35,6 @@
             </div>
 
             <div class="form-group">
-                <label for="group_id">Persona Group:</label>
-                <select name="group_id" id="group_id" class="form-control">
-                    <option value="">No Group</option>
-                    {% for group in groups %}
-                    <option value="{{ group.id }}" {% if persona.group_id == group.id %}selected{% endif %}>
-                        {{ group.name }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <div class="form-group">
                 <label>Goals:</label>
                 <div id="goals-container">
                     {% for goal in persona.goals %}

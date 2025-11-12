@@ -50,7 +50,7 @@ supabase db push
 ```
 
 **Database Tables:**
-- user_profiles, persona_groups, personas, persona_relationships
+- user_profiles, personas
 - conversations, conversation_participants, messages
 - See schema in `supabase/migrations/20251111000000_v1_migration.sql`
 
@@ -91,7 +91,6 @@ All services follow the Result pattern (SupabaseResult/GeminiResult) with `succe
 **2. GeminiService** (`app/services/gemini_service.py`)
 - **Standard Generation**: `generate_response()`, `generate_streaming_response()`
 - **Persona Enrichment**: `generate_persona_enrichment(description)` - Converts free-form text to structured PersonaEnrichment
-- **Suggestions**: `suggest_related_personas(focal_persona, existing_personas)` - Returns list of PersonaSuggestion objects
 - **Multi-Persona Chat**:
   - `generate_persona_response(persona, user_message, chat_history, other_personas)` - Single persona response
   - `route_message_to_personas(message, participants, history)` - Determines up to 3 responders
@@ -100,8 +99,6 @@ All services follow the Result pattern (SupabaseResult/GeminiResult) with `succe
 
 **3. PersonaService** (`app/services/persona_service.py`)
 - **Persona CRUD**: `create_persona()`, `get_persona()`, `get_personas()`, `update_persona()`, `search_personas()`, `archive_persona()`, `delete_persona()`
-- **Groups**: `create_persona_group()`, `get_persona_groups()`, `update_persona_group()`, `delete_persona_group()`
-- **Relationships**: `create_relationship()`, `get_persona_relationships()`, `update_relationship()`, `delete_relationship()`
 - Returns: `SupabaseResult` dataclass
 
 **4. ConversationService** (`app/services/conversation_service.py`)
@@ -114,12 +111,9 @@ All services follow the Result pattern (SupabaseResult/GeminiResult) with `succe
 ### Domain Models (`app/models.py`)
 Dataclasses for type safety and structure:
 - **Persona**: id, name, role, company, goals[], pains[], behaviors, tools, quotes[], tags[], archived, etc.
-- **PersonaGroup**: id, name, description
-- **PersonaRelationship**: from_persona_id, to_persona_id, relationship_type, label
 - **Conversation**: id, title, user_id
 - **Message**: id, conversation_id, persona_id (null for user), user_id (null for persona), content
 - **PersonaEnrichment**: AI-generated structured data from user description
-- **PersonaSuggestion**: AI-generated related persona recommendation
 
 ### Route Organization (Blueprints)
 
@@ -129,14 +123,11 @@ Dataclasses for type safety and structure:
 - `/auth/callback` - Email confirmation callback from Supabase
 
 **2. personas_bp** (`app/routes/personas.py`) - URL prefix: `/personas`
-- `/` - Persona library with search and filters
+- `/` - Persona library with search
 - `/create` (GET/POST) - Create persona with AI enrichment
 - `/save` (POST) - Save edited enrichment
 - `/<persona_id>/edit` (GET/POST) - Edit persona
-- `/<persona_id>/suggestions` - View related persona suggestions
-- `/<persona_id>/accept-suggestion` (POST) - Accept suggestion and create relationship
 - `/<persona_id>/archive` (POST), `/unarchive` (POST), `/delete` (POST)
-- `/groups/create` (POST) - Create persona group
 
 **3. conversations_bp** (`app/routes/conversations.py`) - URL prefix: `/conversations`
 - `/` - List recent conversations
@@ -159,10 +150,9 @@ Dataclasses for type safety and structure:
 - `templates/index.html` - Landing page (not logged in)
 
 **Personas** (`templates/personas/`)
-- `library.html` - Grid view with search, filter, archive
+- `library.html` - Grid view with search and archive
 - `create.html` - Two-step: (1) free-form description, (2) edit AI-enriched profile
 - `edit.html` - Full persona editing form
-- `suggestions.html` - Related persona suggestions with accept/dismiss
 
 **Conversations** (`templates/conversations/`)
 - `list.html` - Recent conversations list
@@ -173,18 +163,16 @@ Dataclasses for type safety and structure:
 
 ### Tables
 1. **user_profiles** - Extended user metadata
-2. **persona_groups** - Organize personas
-3. **personas** - Persona profiles (name, role, company, goals[], pains[], behaviors, tools, quotes[], tags[], archived)
-4. **persona_relationships** - Network edges (from_persona, to_persona, type, label)
-5. **conversations** - Chat sessions (title, user_id)
-6. **conversation_participants** - Many-to-many (conversation_id, persona_id, active)
-7. **messages** - Chat messages (conversation_id, persona_id OR user_id, content)
+2. **personas** - Persona profiles (name, role, company, goals[], pains[], behaviors, tools, quotes[], tags[], archived)
+3. **conversations** - Chat sessions (title, user_id)
+4. **conversation_participants** - Many-to-many (conversation_id, persona_id, active)
+5. **messages** - Chat messages (conversation_id, persona_id OR user_id, content)
 
 ### Row Level Security (RLS)
 All tables have RLS policies ensuring users only access their own data via `auth.uid() = user_id`.
 
 ### Indexes
-Created on user_id, group_id, conversation_id, persona_id, archived, updated_at for performance.
+Created on user_id, conversation_id, persona_id, archived, updated_at for performance.
 
 ## Important Patterns
 
@@ -239,7 +227,7 @@ if enrichment_result.success:
 3. Enrichment shown in editable form
 4. User submits to `/personas/save`
 5. `persona_service.create_persona()` saves to DB
-6. Redirect to `/personas/<id>/suggestions` for related personas
+6. Redirect to `/personas` library
 
 ### Multi-Persona Chat
 1. User selects 1-5 personas in `/conversations/create`
@@ -273,7 +261,6 @@ SESSION_COOKIE_SECURE     # true in production
 ### ✅ Completed Features (V1 PRD)
 - Persona creation from single text area with AI enrichment
 - Editable persona profiles (name, role, company, goals, pains, behaviors, tools, quotes, tags)
-- Related persona suggestions with accept/dismiss
 - Multi-persona chat with intelligent routing
 - @mention support for directed messages
 - Autosave conversations with resume functionality
@@ -291,9 +278,9 @@ SESSION_COOKIE_SECURE     # true in production
 ## Data Persistence Flow
 
 ### Persona Creation
-1. User description → AI enrichment → User edits → Save → Suggestions
+1. User description → AI enrichment → User edits → Save
 2. All data stored in `personas` table with JSONB fields for arrays
-3. Suggestions trigger `persona_relationships` table inserts when accepted
+3. Tags are used to categorize and filter related personas
 
 ### Multi-Persona Conversation
 1. Create conversation → Add participants → Send message → Route to personas → Generate responses → Save messages
@@ -307,7 +294,6 @@ SESSION_COOKIE_SECURE     # true in production
 - Advanced analytics
 - Complex permissions
 - Share links for conversations
-- Nested persona groups
 - Duplicate detection and merge
 - Avatar generation
 - Detailed exports (CSV, JSON)

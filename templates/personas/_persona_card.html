@@ -1,4 +1,4 @@
-<div class="persona-card" data-persona-id="{{ persona.id }}">
+<div class="persona-card{% if created_persona_id == persona.id %} persona-card-new{% endif %}" data-persona-id="{{ persona.id }}" {% if created_persona_id == persona.id %}id="newly-created-persona"{% endif %}>
     <div class="persona-card-header">
         <div class="persona-info">
             <h3>{{ persona.name }}</h3>
@@ -52,6 +52,21 @@
 .persona-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.persona-card-new {
+    border: 2px solid var(--accent);
+    box-shadow: 0 0 20px rgba(52, 211, 153, 0.3);
+    animation: highlight-pulse 2s ease-in-out 3;
+}
+
+@keyframes highlight-pulse {
+    0%, 100% {
+        box-shadow: 0 0 20px rgba(52, 211, 153, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 30px rgba(52, 211, 153, 0.5);
+    }
 }
 
 .persona-card-header {
@@ -143,6 +158,29 @@
 </style>
 
 <script>
+// Scroll to newly created persona
+document.addEventListener('DOMContentLoaded', function() {
+    const newPersona = document.getElementById('newly-created-persona');
+    if (newPersona) {
+        // Ensure group is expanded
+        const card = newPersona.closest('.group-content');
+        if (card && card.id) {
+            const groupId = card.id.replace('content-', '');
+            const content = document.getElementById(card.id);
+            const icon = document.getElementById('icon-' + groupId);
+            if (content && icon && content.style.display === 'none') {
+                content.style.display = 'block';
+                icon.textContent = '▼';
+            }
+        }
+
+        // Scroll to the persona with a small delay to allow the page to render
+        setTimeout(function() {
+            newPersona.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 300);
+    }
+});
+
 async function archivePersona(personaId) {
     if (!confirm('Archive this persona? You can restore it later.')) {
         return;
