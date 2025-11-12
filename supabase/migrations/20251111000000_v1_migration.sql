@@ -35,14 +35,14 @@ BEGIN
     END IF;
 END $$;
 
--- Step 2: Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Step 2: No extension needed - using built-in gen_random_uuid()
+-- Note: gen_random_uuid() is built into PostgreSQL 13+ and Supabase
 
 -- Step 3: Create new tables (using IF NOT EXISTS for safety)
 
 -- User profiles (may already exist)
 CREATE TABLE IF NOT EXISTS user_profiles (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     display_name TEXT,
     preferences JSONB DEFAULT '{}'::jsonb,
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 
 -- Persona groups for organizing personas
 CREATE TABLE IF NOT EXISTS persona_groups (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     description TEXT,
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS persona_groups (
 
 -- Personas table for storing persona profiles
 CREATE TABLE IF NOT EXISTS personas (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     group_id UUID REFERENCES persona_groups(id) ON DELETE SET NULL,
     name TEXT NOT NULL,
@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS personas (
 
 -- Persona relationships for network visualization
 CREATE TABLE IF NOT EXISTS persona_relationships (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     from_persona_id UUID NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
     to_persona_id UUID NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS persona_relationships (
 
 -- NEW Conversations table for multi-persona chat sessions
 CREATE TABLE IF NOT EXISTS conversations (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     title TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS conversation_participants (
 
 -- Messages within conversations
 CREATE TABLE IF NOT EXISTS messages (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     persona_id UUID REFERENCES personas(id) ON DELETE SET NULL,
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
