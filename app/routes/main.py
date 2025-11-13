@@ -85,10 +85,12 @@ def login():
         else:
             result = supabase.login_user(email, password)
             if result.success and result.data:
+                session.permanent = True
                 session["user"] = {
                     "email": result.data.get("email"),
                     "id": result.data.get("id"),
-                    "access_token": result.data.get("access_token")
+                    "access_token": result.data.get("access_token"),
+                    "refresh_token": result.data.get("refresh_token")
                 }
                 flash("Welcome back!", "success")
                 return redirect(url_for("main.index"))

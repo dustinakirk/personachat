@@ -20,7 +20,11 @@
                     {{ conversation.title or 'Untitled Conversation' }}
                 </div>
                 <div class="conversation-meta">
-                    {{ conversation.updated_at.strftime('%b %d') if conversation.updated_at else 'Never' }}
+                    {% if conversation.updated_at %}
+                        {{ conversation.updated_at[:10] if conversation.updated_at is string else conversation.updated_at.strftime('%b %d') }}
+                    {% else %}
+                        Never
+                    {% endif %}
                 </div>
             </a>
             {% endfor %}

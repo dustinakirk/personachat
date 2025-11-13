@@ -59,7 +59,7 @@ class SupabaseService:
             options = ClientOptions(
                 headers=headers,
                 storage=SyncMemoryStorage(),
-                auto_refresh_token=False,  # Server-side, we manage tokens
+                auto_refresh_token=True,   # Enable automatic token refresh
                 persist_session=False       # Don't persist session state
             )
             client = create_client(self._url, self._key, options=options)
@@ -108,10 +108,38 @@ class SupabaseService:
                         "id": response.user.id,
                         "email": response.user.email,
                         "access_token": response.session and response.session.access_token,
+                        "refresh_token": response.session and response.session.refresh_token,
                     },
                 )
             return SupabaseResult(False, error="Invalid credentials.")
         except Exception as exc:  # pylint: disable=broad-except
+            return SupabaseResult(False, error=str(exc))
+
+    def refresh_session(self, refresh_token: str) -> SupabaseResult:
+        """
+        Refresh an expired access token using the refresh token.
+        Returns new access_token and refresh_token.
+        """
+        if not self._client:
+            return SupabaseResult(False, error="Supabase is not configured.")
+
+        try:
+            response = self._client.auth.refresh_session(refresh_token)
+            if response.session:
+                return SupabaseResult(
+                    True,
+                    data={
+                        "access_token": response.session.access_token,
+                        "refresh_token": response.session.refresh_token,
+                        "user": {
+                            "id": response.user.id,
+                            "email": response.user.email,
+                        } if response.user else None,
+                    },
+                )
+            return SupabaseResult(False, error="Failed to refresh session.")
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.error(f"Failed to refresh session: {str(exc)}")
             return SupabaseResult(False, error=str(exc))
 
     def create_user_profile(self, user_id: str, display_name: str = "") -> SupabaseResult:

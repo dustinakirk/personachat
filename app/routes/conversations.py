@@ -169,7 +169,7 @@ def chat(conversation_id):
 @login_required
 @requires_services
 def send_message(conversation_id):
-    """Send a user message and get persona responses"""
+    """Send a user message and return immediately with responder info"""
     user_id = session["user"]["id"]
     message = request.form.get("message", "").strip()
 
@@ -191,6 +191,8 @@ def send_message(conversation_id):
     if not user_msg_result.success:
         return jsonify({"success": False, "error": user_msg_result.error}), 500
 
+    user_message_id = user_msg_result.data.get("message_id")
+
     # Get active participants
     participants_result = g.conversation_service.get_participants(conversation_id)
     if not participants_result.success:
@@ -200,7 +202,7 @@ def send_message(conversation_id):
     active_participants = [p for p in participants_data if p.get("active", True)]
 
     if not active_participants:
-        return jsonify({"success": True, "responses": []})
+        return jsonify({"success": True, "message_id": user_message_id, "responders": []})
 
     # Convert to Persona objects
     participant_personas = [Persona.from_db_row(p) for p in active_participants]
@@ -250,51 +252,228 @@ def send_message(conversation_id):
             # Fallback: first persona responds
             responders = [participant_personas[0]] if participant_personas else []
 
-    # Generate responses from selected personas
-    responses = []
-    other_personas = [p for p in participant_personas if p not in responders]
+    # Return immediately with responder info
+    # The SSE stream endpoint will handle generating the actual responses
+    responder_data = [{
+        "id": p.id,
+        "name": p.name,
+        "role": p.role
+    } for p in responders]
 
-    for persona in responders:
-        # Fetch relationships for this persona with other participants
-        relationships_dict = {}
-        if g.persona_service:
-            rels_result = g.persona_service.get_relationships(persona.id)
-            if rels_result.success:
-                # Build a dict mapping persona_id to relationship data
-                for rel in rels_result.data.get("outgoing", []):
-                    if rel.to_persona_id in [p.id for p in other_personas]:
-                        relationships_dict[rel.to_persona_id] = {
-                            "relationship_type": rel.relationship_type,
-                            "shared_context": rel.shared_context,
-                            "interaction_style": rel.interaction_style
-                        }
+    return jsonify({
+        "success": True,
+        "message_id": user_message_id,
+        "responders": responder_data
+    })
 
-        response_result = current_app.gemini_service.generate_persona_response(
-            persona=persona,
-            user_message=message,
-            chat_history=chat_history,
-            other_personas=other_personas,
-            relationships=relationships_dict if relationships_dict else None
-        )
 
-        if response_result.success:
-            response_text = response_result.data
+@conversations_bp.route("/<conversation_id>/stream", methods=["GET"])
+@login_required
+@requires_services
+def stream_responses(conversation_id):
+    """SSE endpoint that streams persona responses in real-time"""
+    import concurrent.futures
+    import queue
+    import time
 
-            # Save persona response
-            g.conversation_service.add_persona_message(
-                conversation_id=conversation_id,
-                persona_id=persona.id,
-                content=response_text,
-                    )
+    user_id = session["user"]["id"]
+    message_id = request.args.get("message_id")
 
-            responses.append({
-                "persona_id": persona.id,
-                "persona_name": persona.name,
-                "persona_role": persona.role,
-                "content": response_text
+    # Verify conversation ownership
+    conv_result = g.conversation_service.get_conversation(conversation_id)
+    if not conv_result.success or conv_result.data.get("user_id") != user_id:
+        return jsonify({"success": False, "error": "Conversation not found"}), 404
+
+    # Get the latest user message
+    messages_result = g.conversation_service.get_messages(conversation_id, limit=1)
+    if not messages_result.success:
+        return jsonify({"success": False, "error": "Failed to get messages"}), 500
+
+    messages = messages_result.data.get("messages", [])
+    if not messages or messages[0].get("persona_id"):
+        return jsonify({"success": False, "error": "No user message found"}), 400
+
+    latest_message = messages[0]["content"]
+
+    # Get active participants and determine responders (same logic as send_message)
+    participants_result = g.conversation_service.get_participants(conversation_id)
+    if not participants_result.success:
+        return jsonify({"success": False, "error": "Failed to get participants"}), 500
+
+    participants_data = participants_result.data.get("participants", [])
+    active_participants = [p for p in participants_data if p.get("active", True)]
+
+    if not active_participants:
+        # Send completion event and close
+        def generate():
+            yield f"data: {json.dumps({'type': 'complete', 'message': 'No active participants'})}\n\n"
+        return Response(generate(), mimetype="text/event-stream")
+
+    participant_personas = [Persona.from_db_row(p) for p in active_participants]
+
+    # Check for @mentions
+    mentioned_persona = None
+    mention_pattern = r'@(\w+)'
+    mentions = re.findall(mention_pattern, latest_message)
+
+    if mentions:
+        mention_name = mentions[0].lower()
+        for p in participant_personas:
+            if p.name.lower().startswith(mention_name):
+                mentioned_persona = p
+                break
+
+    # Get chat history
+    all_messages_result = g.conversation_service.get_messages(conversation_id, limit=20)
+    chat_history = []
+    if all_messages_result.success:
+        for msg in all_messages_result.data.get("messages", []):
+            chat_history.append({
+                "speaker": msg.get("speaker_name", "Unknown"),
+                "content": msg.get("content", "")
             })
 
-    return jsonify({"success": True, "responses": responses})
+    # Determine responders
+    responders = []
+    if mentioned_persona:
+        responders = [mentioned_persona]
+    else:
+        routing_result = current_app.gemini_service.route_message_to_personas(
+            user_message=latest_message,
+            participant_personas=participant_personas,
+            chat_history=chat_history,
+            max_responders=3
+        )
+
+        if routing_result.success:
+            responder_ids = routing_result.data
+            responders = [p for p in participant_personas if p.id in responder_ids]
+        else:
+            responders = [participant_personas[0]] if participant_personas else []
+
+    other_personas = [p for p in participant_personas if p not in responders]
+
+    # Capture service references BEFORE creating generator (to avoid application context issues)
+    gemini_service = current_app.gemini_service
+    persona_service = g.persona_service
+    conversation_service = g.conversation_service
+
+    def generate():
+        """Generator function that yields SSE events"""
+        # Send initial event with responders
+        yield f"data: {json.dumps({'type': 'responders', 'responders': [{'id': p.id, 'name': p.name} for p in responders]})}\n\n"
+
+        # Create a queue to collect chunks from all personas
+        event_queue = queue.Queue()
+
+        def stream_persona_response(persona, gemini_svc, persona_svc, conversation_svc):
+            """Stream a single persona's response"""
+            try:
+                # Signal typing start
+                event_queue.put({
+                    'type': 'typing_start',
+                    'persona_id': persona.id,
+                    'persona_name': persona.name
+                })
+
+                # Get relationships
+                relationships_dict = {}
+                if persona_svc:
+                    rels_result = persona_svc.get_relationships(persona.id)
+                    if rels_result.success:
+                        for rel in rels_result.data.get("outgoing", []):
+                            if rel.to_persona_id in [p.id for p in other_personas]:
+                                relationships_dict[rel.to_persona_id] = {
+                                    "relationship_type": rel.relationship_type,
+                                    "shared_context": rel.shared_context,
+                                    "interaction_style": rel.interaction_style
+                                }
+
+                # Generate streaming response
+                stream_result = gemini_svc.generate_persona_response_streaming(
+                    persona=persona,
+                    user_message=latest_message,
+                    chat_history=chat_history,
+                    other_personas=other_personas,
+                    relationships=relationships_dict if relationships_dict else None
+                )
+
+                if stream_result.success:
+                    full_response = ""
+                    for chunk in stream_result.data:
+                        full_response += chunk
+                        event_queue.put({
+                            'type': 'chunk',
+                            'persona_id': persona.id,
+                            'persona_name': persona.name,
+                            'chunk': chunk
+                        })
+
+                    # Save complete response to database
+                    conversation_svc.add_persona_message(
+                        conversation_id=conversation_id,
+                        persona_id=persona.id,
+                        content=full_response
+                    )
+
+                    # Signal completion
+                    event_queue.put({
+                        'type': 'persona_complete',
+                        'persona_id': persona.id,
+                        'persona_name': persona.name
+                    })
+                else:
+                    event_queue.put({
+                        'type': 'error',
+                        'persona_id': persona.id,
+                        'error': stream_result.error
+                    })
+
+            except Exception as e:
+                event_queue.put({
+                    'type': 'error',
+                    'persona_id': persona.id,
+                    'error': str(e)
+                })
+
+        # Start all persona response streams in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(responders)) as executor:
+            futures = [executor.submit(stream_persona_response, persona, gemini_service, persona_service, conversation_service) for persona in responders]
+
+            # Track completion
+            completed_count = 0
+            timeout = 120  # 2 minute timeout
+            start_time = time.time()
+
+            # Yield events as they arrive
+            while completed_count < len(responders):
+                try:
+                    # Check timeout
+                    if time.time() - start_time > timeout:
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Timeout waiting for responses'})}\n\n"
+                        break
+
+                    # Get event with timeout
+                    event = event_queue.get(timeout=0.5)
+
+                    if event['type'] == 'persona_complete':
+                        completed_count += 1
+
+                    yield f"data: {json.dumps(event)}\n\n"
+
+                except queue.Empty:
+                    continue
+
+            # Wait for all threads to complete
+            concurrent.futures.wait(futures, timeout=5)
+
+        # Send final completion event
+        yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream", headers={
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no'
+    })
 
 
 # ============================================================================

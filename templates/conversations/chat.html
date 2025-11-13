@@ -57,7 +57,9 @@
                     <span class="speaker-role">{{ message.speaker_role }}</span>
                     {% endif %}
                     <span class="message-time">
-                        {{ message.created_at.strftime('%I:%M %p') if message.created_at else '' }}
+                        {% if message.created_at %}
+                            {{ message.created_at[:16].replace('T', ' ') if message.created_at is string else message.created_at.strftime('%I:%M %p') }}
+                        {% endif %}
                     </span>
                 </div>
                 <div class="message-content">{{ message.content }}</div>
@@ -367,7 +369,66 @@
 
 <script>
 const conversationId = "{{ conversation.id }}";
+const currentUser = "{{ session.user.email }}";
+let eventSource = null;
 
+// Helper to add a message to the DOM
+function addMessageToDOM(speakerName, speakerRole, content, isUser = false, personaId = null) {
+    const messagesContainer = document.getElementById('messages-container');
+
+    // Remove "empty messages" placeholder if it exists
+    const emptyMsg = messagesContainer.querySelector('.empty-messages');
+    if (emptyMsg) {
+        emptyMsg.remove();
+    }
+
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${isUser ? 'user-message' : 'persona-message'}`;
+    if (personaId) {
+        messageDiv.dataset.personaId = personaId;
+    }
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+    messageDiv.innerHTML = `
+        <div class="message-header">
+            <strong class="speaker-name">${speakerName}</strong>
+            ${!isUser && speakerRole ? `<span class="speaker-role">${speakerRole}</span>` : ''}
+            <span class="message-time">${timeStr}</span>
+        </div>
+        <div class="message-content">${content}</div>
+    `;
+
+    messagesContainer.appendChild(messageDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+    return messageDiv;
+}
+
+// Helper to add typing indicator
+function addTypingIndicator(personaId, personaName) {
+    const messageDiv = addMessageToDOM(personaName, '', '', false, personaId);
+    messageDiv.classList.add('message-placeholder');
+
+    const contentDiv = messageDiv.querySelector('.message-content');
+    contentDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+
+    return messageDiv;
+}
+
+// Update message content (for streaming)
+function updateMessageContent(personaId, content) {
+    const messages = document.querySelectorAll(`.message[data-persona-id="${personaId}"]`);
+    if (messages.length > 0) {
+        const lastMessage = messages[messages.length - 1];
+        const contentDiv = lastMessage.querySelector('.message-content');
+        contentDiv.textContent = content;
+        lastMessage.classList.remove('message-placeholder');
+    }
+}
+
+// Main send message function
 async function sendMessage(event) {
     event.preventDefault();
 
@@ -376,13 +437,16 @@ async function sendMessage(event) {
 
     if (!message) return;
 
-    // Disable send button
+    // Add user message IMMEDIATELY to DOM (before any API calls!)
+    addMessageToDOM('You', '', message, true);
+
+    // Clear input immediately for better UX
+    input.value = '';
+
+    // Disable send button temporarily
     const sendBtn = document.getElementById('send-btn');
     sendBtn.disabled = true;
     sendBtn.textContent = 'Sending...';
-
-    // Show loading indicator
-    document.getElementById('loading-indicator').style.display = 'flex';
 
     try {
         const formData = new FormData();
@@ -396,21 +460,102 @@ async function sendMessage(event) {
         const data = await response.json();
 
         if (data.success) {
-            // Clear input
-            input.value = '';
+            // Re-enable send button
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Send Message';
 
-            // Reload to show new messages
-            window.location.reload();
+            // If there are responders, start SSE stream
+            if (data.responders && data.responders.length > 0) {
+                startStreamingResponses(data.message_id, data.responders);
+            }
         } else {
             alert('Error sending message: ' + data.error);
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Send Message';
         }
     } catch (error) {
         alert('Error sending message: ' + error.message);
-    } finally {
         sendBtn.disabled = false;
         sendBtn.textContent = 'Send Message';
-        document.getElementById('loading-indicator').style.display = 'none';
     }
+}
+
+// Start SSE stream for persona responses
+function startStreamingResponses(messageId, responders) {
+    // Close any existing connection
+    if (eventSource) {
+        eventSource.close();
+    }
+
+    // Add typing indicators for all responders
+    const typingElements = {};
+    responders.forEach(responder => {
+        typingElements[responder.id] = addTypingIndicator(responder.id, responder.name);
+    });
+
+    // Track accumulated responses
+    const accumulatedResponses = {};
+    responders.forEach(responder => {
+        accumulatedResponses[responder.id] = '';
+    });
+
+    // Open SSE connection
+    eventSource = new EventSource(`/conversations/${conversationId}/stream?message_id=${messageId}`);
+
+    eventSource.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+
+        switch (data.type) {
+            case 'responders':
+                // Initial responders list (already handled)
+                console.log('Responders:', data.responders);
+                break;
+
+            case 'typing_start':
+                // Typing indicator already shown
+                console.log(`${data.persona_name} is typing...`);
+                break;
+
+            case 'chunk':
+                // Accumulate and update message content
+                accumulatedResponses[data.persona_id] += data.chunk;
+                updateMessageContent(data.persona_id, accumulatedResponses[data.persona_id]);
+                break;
+
+            case 'persona_complete':
+                // Persona finished responding
+                console.log(`${data.persona_name} finished`);
+                break;
+
+            case 'complete':
+                // All responses complete
+                console.log('All responses complete');
+                eventSource.close();
+                eventSource = null;
+                break;
+
+            case 'error':
+                console.error('Stream error:', data.error || data.message);
+                alert('Error generating response: ' + (data.error || data.message));
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+                break;
+        }
+    };
+
+    eventSource.onerror = function(error) {
+        console.error('EventSource error:', error);
+        eventSource.close();
+        eventSource = null;
+        // Remove typing indicators
+        Object.values(typingElements).forEach(el => {
+            if (el.classList.contains('message-placeholder')) {
+                el.remove();
+            }
+        });
+    };
 }
 
 async function toggleParticipant(personaId, active) {

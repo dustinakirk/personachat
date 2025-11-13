@@ -24,7 +24,9 @@
                     </a>
                 </h3>
                 <span class="conversation-date">
-                    {{ conversation.updated_at.strftime('%b %d, %Y') if conversation.updated_at else '' }}
+                    {% if conversation.updated_at %}
+                        {{ conversation.updated_at[:10] if conversation.updated_at is string else conversation.updated_at.strftime('%b %d, %Y') }}
+                    {% endif %}
                 </span>
             </div>
 
@@ -35,7 +37,7 @@
                 </span>
                 <span class="meta-item">
                     <i class="icon-clock"></i>
-                    Last updated: {{ conversation.updated_at.strftime('%I:%M %p') if conversation.updated_at else 'Never' }}
+                    Last updated: {% if conversation.updated_at %}{{ conversation.updated_at[:16].replace('T', ' ') if conversation.updated_at is string else conversation.updated_at.strftime('%I:%M %p') }}{% else %}Never{% endif %}
                 </span>
             </div>
 

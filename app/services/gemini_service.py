@@ -505,6 +505,109 @@ IMPORTANT:
         except Exception as e:
             return GeminiResult(success=False, error=f"Gemini API error: {str(e)}")
 
+    def generate_persona_response_streaming(
+        self,
+        persona: Persona,
+        user_message: str,
+        chat_history: List[Dict[str, Any]],
+        other_personas: List[Persona],
+        relationships: Optional[Dict[str, Dict[str, Any]]] = None,
+        model: Optional[str] = None
+    ) -> GeminiResult:
+        """
+        Generate a streaming response from a specific persona in a multi-persona chat.
+
+        Returns a GeminiResult where data is a generator that yields text chunks.
+
+        Args:
+            persona: The persona generating the response
+            user_message: The user's latest message
+            chat_history: Recent chat messages for context
+            other_personas: Other personas in the conversation
+            relationships: Dict mapping persona_id to relationship data
+            model: Model to use (defaults to service default)
+
+        Returns:
+            GeminiResult containing a generator that yields response chunks, or error
+        """
+        if not self._client:
+            return GeminiResult(success=False, error="Gemini API key is missing.")
+
+        # Build persona context (same as generate_persona_response)
+        persona_context = f"""You are roleplaying as the following persona:
+
+Name: {persona.name}
+Role: {persona.role or 'Professional'}
+Company: {persona.company or 'N/A'}
+Goals: {', '.join(persona.goals) if persona.goals else 'General professional success'}
+Pain Points: {', '.join(persona.pains) if persona.pains else 'Common workplace challenges'}
+Behaviors: {persona.behaviors or 'Professional and collaborative'}
+Tools: {persona.tools or 'Standard workplace tools'}
+"""
+
+        if persona.quotes:
+            persona_context += f"\nTypical phrases: {', '.join(persona.quotes)}"
+
+        # Build context about other personas WITH relationship information
+        other_context = ""
+        if other_personas:
+            other_context = "\n\nOther personas in this conversation:\n"
+            for p in other_personas:
+                other_context += f"- {p.name} ({p.role or 'Professional'})"
+
+                # Add relationship context if available
+                if relationships and p.id in relationships:
+                    rel = relationships[p.id]
+                    other_context += f"\n  Relationship: {rel.get('relationship_type', 'colleague')}"
+                    if rel.get('shared_context'):
+                        other_context += f"\n  Shared context: {rel.get('shared_context')}"
+                    if rel.get('interaction_style'):
+                        other_context += f"\n  How you interact: {rel.get('interaction_style')}"
+                other_context += "\n"
+
+        # Build chat history context
+        history_context = ""
+        if chat_history:
+            history_context = "\n\nRecent conversation:\n"
+            for msg in chat_history[-10:]:  # Last 10 messages
+                speaker = msg.get("speaker", "User")
+                content = msg.get("content", "")
+                history_context += f"{speaker}: {content}\n"
+
+        prompt = f"""{persona_context}{other_context}{history_context}
+
+User's message: {user_message}
+
+Respond as {persona.name} would, staying in character. Keep your response concise (2-4 sentences) and relevant to the conversation.
+
+IMPORTANT:
+- Reference your relationships with other personas naturally when relevant
+- You can respond to or acknowledge other personas' messages, not just the user
+- Use shared context and interaction styles when addressing personas you have relationships with
+- Stay authentic to your character and the established relationships"""
+
+        try:
+            model_name = model or self._default_model
+            config = types.GenerateContentConfig()
+
+            # Generate streaming response
+            response_stream = self._client.models.generate_content_stream(
+                model=model_name,
+                contents=prompt,
+                config=config,
+            )
+
+            # Create generator that yields chunks
+            def chunk_generator():
+                for chunk in response_stream:
+                    if hasattr(chunk, 'text') and chunk.text:
+                        yield chunk.text
+
+            return GeminiResult(success=True, data=chunk_generator())
+
+        except Exception as e:
+            return GeminiResult(success=False, error=f"Gemini API error: {str(e)}")
+
     def route_message_to_personas(
         self,
         user_message: str,

@@ -181,6 +181,22 @@ button.btn {
   border-color: var(--color-text-muted);
 }
 
+.btn-small {
+  padding: var(--space-1) var(--space-2);
+  font-size: 12px;
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  border-color: var(--color-accent);
+}
+
+.btn-primary:hover {
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+}
+
 .form-actions {
   display: flex;
   flex-wrap: wrap;
@@ -315,6 +331,54 @@ textarea {
   text-align: center;
   color: var(--color-text-muted);
   background: var(--color-panel);
+}
+
+/* Typing indicator animation */
+.typing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: var(--space-2);
+}
+
+.typing-indicator span {
+  width: 6px;
+  height: 6px;
+  background: var(--color-text-muted);
+  border-radius: 50%;
+  animation: typing-bounce 1.4s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-8px);
+    opacity: 1;
+  }
+}
+
+/* Message placeholder for streaming */
+.message-placeholder {
+  opacity: 0.8;
+}
+
+.message-placeholder .message-content {
+  min-height: 40px;
 }
 
 @media (max-width: 720px) {

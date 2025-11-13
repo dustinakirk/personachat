@@ -36,6 +36,9 @@
     </div>
 
     <div class="persona-card-footer">
+        <form action="{{ url_for('conversations.quick_start', persona_id=persona.id) }}" method="POST" style="display: inline;">
+            <button type="submit" class="btn btn-small btn-primary">Chat</button>
+        </form>
         <a href="{{ url_for('personas.edit', persona_id=persona.id) }}" class="btn btn-small">Edit</a>
     </div>
 </div>

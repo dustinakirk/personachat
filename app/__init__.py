@@ -1,4 +1,6 @@
 import logging
+import jwt
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -54,6 +56,44 @@ def create_app() -> Flask:
 
         if "user" in session:
             access_token = session["user"].get("access_token")
+            refresh_token = session["user"].get("refresh_token")
+
+            # Check if token needs refresh (expired or expiring within 1 hour)
+            token_needs_refresh = False
+            if access_token:
+                try:
+                    # Decode without verification to check expiry
+                    decoded = jwt.decode(access_token, options={"verify_signature": False})
+                    exp_timestamp = decoded.get("exp", 0)
+                    current_time = time.time()
+                    # Refresh if token expires within 1 hour (3600 seconds)
+                    if exp_timestamp - current_time < 3600:
+                        token_needs_refresh = True
+                        logger.info("Access token expiring soon, will attempt refresh")
+                except jwt.DecodeError:
+                    logger.warning("Failed to decode access token, will attempt refresh")
+                    token_needs_refresh = True
+                except Exception as exc:
+                    logger.warning(f"Error checking token expiry: {exc}")
+                    token_needs_refresh = True
+
+            # Attempt to refresh token if needed and refresh_token is available
+            if token_needs_refresh and refresh_token:
+                logger.info("Attempting to refresh access token")
+                refresh_result = app.supabase_service.refresh_session(refresh_token)
+                if refresh_result.success:
+                    # Update session with new tokens
+                    session["user"]["access_token"] = refresh_result.data.get("access_token")
+                    session["user"]["refresh_token"] = refresh_result.data.get("refresh_token")
+                    access_token = refresh_result.data.get("access_token")
+                    logger.info("Successfully refreshed access token")
+                else:
+                    logger.error(f"Failed to refresh token: {refresh_result.error}")
+                    # Token refresh failed - clear session and redirect to login
+                    session.clear()
+                    flash("Your session has expired. Please log in again.", "warning")
+                    return redirect(url_for("main.login"))
+
             if access_token:
                 # Create authenticated Supabase client for this request
                 auth_client = app.supabase_service.get_authenticated_client(access_token)
