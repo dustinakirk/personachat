@@ -429,9 +429,13 @@ class ConversationService:
                 if msg.get("persona_id") and msg.get("personas"):
                     enriched_msg["speaker_name"] = msg["personas"]["name"]
                     enriched_msg["speaker_role"] = msg["personas"].get("role")
+                    enriched_msg["avatar_emoji"] = msg["personas"].get("avatar_emoji")
+                    enriched_msg["avatar_color"] = msg["personas"].get("avatar_color")
                     enriched_msg["is_user_message"] = False
                 else:
                     enriched_msg["speaker_name"] = "You"
+                    enriched_msg["avatar_emoji"] = None
+                    enriched_msg["avatar_color"] = None
                     enriched_msg["is_user_message"] = True
                 # Remove the nested personas object to keep the message structure clean
                 enriched_msg.pop("personas", None)

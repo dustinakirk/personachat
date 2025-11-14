@@ -2,7 +2,7 @@ import logging
 import logging.config
 import jwt
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import os
 
@@ -90,6 +90,10 @@ def create_app() -> Flask:
 
     # Register custom Jinja2 filters
     app.jinja_env.filters['relative_time'] = relative_time
+
+    # Add datetime functions to Jinja2 global context
+    app.jinja_env.globals['now'] = datetime.now
+    app.jinja_env.globals['timedelta'] = timedelta
 
     @app.before_request
     def setup_authenticated_services():

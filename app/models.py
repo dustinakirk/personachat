@@ -26,6 +26,8 @@ class Persona:
     quotes: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
     notes: Optional[str] = None
+    avatar_emoji: Optional[str] = None
+    avatar_color: Optional[str] = None
     archived: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -46,6 +48,8 @@ class Persona:
             'quotes': self.quotes,
             'tags': self.tags,
             'notes': self.notes,
+            'avatar_emoji': self.avatar_emoji,
+            'avatar_color': self.avatar_color,
             'archived': self.archived,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
@@ -68,6 +72,8 @@ class Persona:
             quotes=row.get('quotes', []),
             tags=row.get('tags', []),
             notes=row.get('notes'),
+            avatar_emoji=row.get('avatar_emoji'),
+            avatar_color=row.get('avatar_color'),
             archived=row.get('archived', False),
             created_at=row.get('created_at'),
             updated_at=row.get('updated_at')

@@ -10,6 +10,56 @@
 
     <div class="edit-card">
         <form method="POST" action="{{ url_for('personas.edit', persona_id=persona.id) }}">
+            <!-- Avatar Settings -->
+            <div class="avatar-settings">
+                <div class="emoji-picker-group">
+                    <label for="avatar_emoji">Avatar Emoji:</label>
+                    <input
+                        type="text"
+                        name="avatar_emoji"
+                        id="avatar_emoji"
+                        class="emoji-input"
+                        value="{{ persona.avatar_emoji or '' }}"
+                        placeholder="😀"
+                        maxlength="2"
+                    >
+                    <small class="help-text">Choose an emoji to represent this persona</small>
+                </div>
+
+                <div class="color-picker-group">
+                    <label>Avatar Color:</label>
+                    <div class="color-picker-wrapper">
+                        <button type="button" class="color-picker-button" id="colorPickerButton" onclick="toggleColorPicker()">
+                            <div class="color-swatch-preview" id="colorPreview" style="background-color: {{ persona.avatar_color or '#28A2AB' }}"></div>
+                            <span id="colorLabel">{{ persona.avatar_color or 'Teal' }}</span>
+                            <svg class="color-picker-caret" viewBox="0 0 12 12" fill="currentColor">
+                                <path d="M6 8L2 4h8z"/>
+                            </svg>
+                        </button>
+                        <input type="hidden" name="avatar_color" id="avatar_color" value="{{ persona.avatar_color or '#28A2AB' }}">
+
+                        <div class="color-picker-dropdown" id="colorPickerDropdown">
+                            <div class="color-swatches-grid">
+                                <div class="color-swatch" style="background-color: #28A2AB" data-color="#28A2AB" data-name="Teal" onclick="selectColor('#28A2AB', 'Teal')"></div>
+                                <div class="color-swatch" style="background-color: #63A0DC" data-color="#63A0DC" data-name="Blue" onclick="selectColor('#63A0DC', 'Blue')"></div>
+                                <div class="color-swatch" style="background-color: #5C74AD" data-color="#5C74AD" data-name="Purple" onclick="selectColor('#5C74AD', 'Purple')"></div>
+                                <div class="color-swatch" style="background-color: #E56996" data-color="#E56996" data-name="Raspberry" onclick="selectColor('#E56996', 'Raspberry')"></div>
+
+                                <div class="color-swatch" style="background-color: #FC7272" data-color="#FC7272" data-name="Pink" onclick="selectColor('#FC7272', 'Pink')"></div>
+                                <div class="color-swatch" style="background-color: #FC9A65" data-color="#FC9A65" data-name="Peach" onclick="selectColor('#FC9A65', 'Peach')"></div>
+                                <div class="color-swatch" style="background-color: #F39A41" data-color="#F39A41" data-name="Orange" onclick="selectColor('#F39A41', 'Orange')"></div>
+                                <div class="color-swatch" style="background-color: #F3B441" data-color="#F3B441" data-name="Yellow" onclick="selectColor('#F3B441', 'Yellow')"></div>
+
+                                <div class="color-swatch" style="background-color: #28AB7D" data-color="#28AB7D" data-name="Green" onclick="selectColor('#28AB7D', 'Green')"></div>
+                                <div class="color-swatch" style="background-color: #28AB94" data-color="#28AB94" data-name="Mint" onclick="selectColor('#28AB94', 'Mint')"></div>
+                                <div class="color-swatch" style="background-color: #5C87AD" data-color="#5C87AD" data-name="Slate" onclick="selectColor('#5C87AD', 'Slate')"></div>
+                                <div class="color-swatch" style="background-color: #FF6B6B" data-color="#FF6B6B" data-name="Coral" onclick="selectColor('#FF6B6B', 'Coral')"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="form-row">
                 <div class="form-group">
                     <label for="name">Name: *</label>
@@ -196,6 +246,59 @@ textarea.form-control {
 </style>
 
 <script>
+// Color Picker Functions
+function toggleColorPicker() {
+    const dropdown = document.getElementById('colorPickerDropdown');
+    const button = document.getElementById('colorPickerButton');
+
+    dropdown.classList.toggle('open');
+    button.classList.toggle('open');
+}
+
+function selectColor(color, name) {
+    // Update hidden input
+    document.getElementById('avatar_color').value = color;
+
+    // Update preview swatch
+    document.getElementById('colorPreview').style.backgroundColor = color;
+
+    // Update label
+    document.getElementById('colorLabel').textContent = name;
+
+    // Update selected state
+    document.querySelectorAll('.color-swatch').forEach(swatch => {
+        swatch.classList.remove('selected');
+    });
+    event.target.classList.add('selected');
+
+    // Close dropdown
+    toggleColorPicker();
+}
+
+// Close color picker when clicking outside
+document.addEventListener('click', function(event) {
+    const picker = document.querySelector('.color-picker-wrapper');
+    const dropdown = document.getElementById('colorPickerDropdown');
+    const button = document.getElementById('colorPickerButton');
+
+    if (picker && !picker.contains(event.target) && dropdown.classList.contains('open')) {
+        dropdown.classList.remove('open');
+        button.classList.remove('open');
+    }
+});
+
+// Initialize selected color on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const currentColor = document.getElementById('avatar_color').value;
+    const swatches = document.querySelectorAll('.color-swatch');
+
+    swatches.forEach(swatch => {
+        if (swatch.dataset.color === currentColor) {
+            swatch.classList.add('selected');
+        }
+    });
+});
+
 function addGoal() {
     const container = document.getElementById('goals-container');
     const input = document.createElement('input');

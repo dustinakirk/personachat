@@ -84,6 +84,68 @@ def _make_api_call_with_retry(client: genai.Client, model: str, contents: str, c
     return _call()
 
 
+def _make_api_call_with_model_fallback(client: genai.Client, contents: str, config: types.GenerateContentConfig, logger):
+    """
+    Make a Gemini API call with automatic model fallback.
+
+    Model priority:
+    1. gemini-2.5-flash (1 attempt)
+    2. gemini-2.5-flash-lite (1 attempt)
+    3. gemini-2.5-pro (3 attempts with retry)
+
+    Returns the response from the first successful model.
+    """
+    models_to_try = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]
+    last_error = None
+
+    for i, model_name in enumerate(models_to_try):
+        is_last_model = (i == len(models_to_try) - 1)
+
+        try:
+            logger.info(f"Attempting model: {model_name}")
+
+            if is_last_model:
+                # Use retry logic on final model
+                response = _make_api_call_with_retry(client, model_name, contents, config)
+            else:
+                # Single attempt for first two models
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=contents,
+                    config=config
+                )
+
+            logger.info(f"Model {model_name} succeeded")
+            return response
+
+        except Exception as e:
+            last_error = e
+            error_str = str(e).lower()
+
+            # Determine if we should skip to next model
+            should_skip = False
+
+            # Check for model not found or auth errors
+            if any(code in error_str for code in ["404", "401", "403"]):
+                logger.warning(f"Model {model_name} config error (404/401/403), skipping to next model")
+                should_skip = True
+            # Check for service errors
+            elif any(code in error_str for code in ["503", "429", "500"]) or "timeout" in error_str or "connection" in error_str:
+                logger.warning(f"Model {model_name} service error, trying next model")
+                should_skip = True
+            else:
+                logger.warning(f"Model {model_name} failed with error: {str(e)}, trying next model")
+                should_skip = True
+
+            if is_last_model or not should_skip:
+                # Last model failed or non-retryable error
+                logger.error(f"All models failed. Last error from {model_name}: {str(last_error)}")
+                raise last_error
+
+    # Should never reach here, but just in case
+    raise last_error if last_error else Exception("All models failed with unknown error")
+
+
 class GeminiService:
     """Service for interacting with Google Gemini AI models using the new GenAI SDK."""
 
@@ -181,12 +243,12 @@ class GeminiService:
             if self._system_instruction:
                 config.system_instruction = self._system_instruction
 
-            # Use retry wrapper for API call
-            response = _make_api_call_with_retry(
+            # Use model fallback router for API call
+            response = _make_api_call_with_model_fallback(
                 self._client,
-                model_name,
                 prompt,
-                config
+                config,
+                logger
             )
 
             # Extract text from response
@@ -201,7 +263,7 @@ class GeminiService:
             last_exception = e.last_attempt.exception()
             return GeminiResult(
                 success=False,
-                error=f"Gemini API unavailable after 3 attempts: {str(last_exception)}",
+                error=f"Gemini API unavailable after all model fallbacks: {str(last_exception)}",
             )
         except Exception as e:
             return GeminiResult(
@@ -215,7 +277,7 @@ class GeminiService:
         model: Optional[str] = None,
     ) -> Generator[str, None, None]:
         """
-        Generate a streaming response from Gemini.
+        Generate a streaming response from Gemini with automatic model fallback.
 
         Args:
             prompt: User prompt
@@ -233,29 +295,47 @@ class GeminiService:
         if not prompt.strip():
             return
 
-        # Use default model if none specified
-        model_name = model or self._default_model
+        # Build config with system instruction if available
+        config = types.GenerateContentConfig()
+        if self._system_instruction:
+            config.system_instruction = self._system_instruction
 
-        try:
-            # Build config with system instruction if available
-            config = types.GenerateContentConfig()
-            if self._system_instruction:
-                config.system_instruction = self._system_instruction
+        # Try models with fallback
+        models_to_try = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]
+        last_error = None
 
-            # Generate streaming response
-            response_stream = self._client.models.generate_content_stream(
-                model=model_name,
-                contents=prompt,
-                config=config,
-            )
+        for i, model_name in enumerate(models_to_try):
+            is_last_model = (i == len(models_to_try) - 1)
 
-            # Yield text chunks as they arrive
-            for chunk in response_stream:
-                if hasattr(chunk, 'text') and chunk.text:
-                    yield chunk.text
+            try:
+                logger.info(f"Attempting streaming with model: {model_name}")
 
-        except Exception as e:
-            yield f"Error: {str(e)}"
+                # Generate streaming response
+                response_stream = self._client.models.generate_content_stream(
+                    model=model_name,
+                    contents=prompt,
+                    config=config,
+                )
+
+                # Yield text chunks as they arrive
+                logger.info(f"Streaming model {model_name} succeeded")
+                for chunk in response_stream:
+                    if hasattr(chunk, 'text') and chunk.text:
+                        yield chunk.text
+
+                return  # Success, exit
+
+            except Exception as e:
+                last_error = e
+                error_str = str(e).lower()
+                logger.warning(f"Streaming model {model_name} failed: {str(e)}")
+
+                if is_last_model:
+                    # All models failed
+                    logger.error(f"All streaming models failed. Last error: {str(last_error)}")
+                    yield f"Error: All models failed. {str(last_error)}"
+                    return
+                # Try next model
 
     # ========================================================================
     # PERSONA ENRICHMENT METHODS
@@ -337,15 +417,14 @@ IMPORTANT:
 Provide ONLY the JSON object, no additional text."""
 
         try:
-            model_name = model or self._default_model
             config = types.GenerateContentConfig()
 
-            # Use retry wrapper for API call
-            response = _make_api_call_with_retry(
+            # Use model fallback router for API call
+            response = _make_api_call_with_model_fallback(
                 self._client,
-                model_name,
                 prompt,
-                config
+                config,
+                logger
             )
 
             response_text = response.text if hasattr(response, 'text') else str(response)
@@ -487,15 +566,14 @@ IMPORTANT:
 - Stay authentic to your character and the established relationships"""
 
         try:
-            model_name = model or self._default_model
             config = types.GenerateContentConfig()
 
-            # Use retry wrapper for API call
-            response = _make_api_call_with_retry(
+            # Use model fallback router for API call
+            response = _make_api_call_with_model_fallback(
                 self._client,
-                model_name,
                 prompt,
-                config
+                config,
+                logger
             )
 
             response_text = response.text if hasattr(response, 'text') else str(response)
@@ -504,7 +582,7 @@ IMPORTANT:
 
         except RetryError as e:
             last_exception = e.last_attempt.exception()
-            return GeminiResult(success=False, error=f"Gemini API unavailable after 3 attempts: {str(last_exception)}")
+            return GeminiResult(success=False, error=f"Gemini API unavailable after all model fallbacks: {str(last_exception)}")
         except Exception as e:
             return GeminiResult(success=False, error=f"Gemini API error: {str(e)}")
 
@@ -596,39 +674,55 @@ IMPORTANT:
 - Use shared context and interaction styles when addressing personas you have relationships with
 - Stay authentic to your character and the established relationships"""
 
-        try:
-            model_name = model or self._default_model
-            config = types.GenerateContentConfig()
+        # Try models with fallback
+        config = types.GenerateContentConfig()
+        models_to_try = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]
+        last_error = None
 
-            logger.info(f"Gemini streaming API call | persona={persona.name} persona_id={persona.id} model={model_name} prompt_len={len(prompt)}")
+        for i, model_name in enumerate(models_to_try):
+            is_last_model = (i == len(models_to_try) - 1)
 
-            # Generate streaming response
-            response_stream = self._client.models.generate_content_stream(
-                model=model_name,
-                contents=prompt,
-                config=config,
-            )
+            try:
+                logger.info(f"Gemini streaming API call | persona={persona.name} persona_id={persona.id} model={model_name} prompt_len={len(prompt)}")
 
-            # Create generator that yields chunks
-            def chunk_generator():
-                chunk_num = 0
-                try:
-                    for chunk in response_stream:
-                        if hasattr(chunk, 'text') and chunk.text:
-                            chunk_num += 1
-                            chunk_len = len(chunk.text)
-                            logger.debug(f"Gemini chunk received | persona={persona.name} chunk_num={chunk_num} chunk_len={chunk_len}")
-                            yield chunk.text
-                    logger.info(f"Gemini streaming complete | persona={persona.name} total_chunks={chunk_num}")
-                except Exception as chunk_error:
-                    logger.error(f"Gemini streaming chunk error | persona={persona.name} chunk_num={chunk_num} error_type={type(chunk_error).__name__} error={str(chunk_error)}", exc_info=True)
-                    yield f"Error: {str(chunk_error)}"
+                # Generate streaming response
+                response_stream = self._client.models.generate_content_stream(
+                    model=model_name,
+                    contents=prompt,
+                    config=config,
+                )
 
-            return GeminiResult(success=True, data=chunk_generator())
+                # Create generator that yields chunks
+                def chunk_generator():
+                    chunk_num = 0
+                    try:
+                        for chunk in response_stream:
+                            if hasattr(chunk, 'text') and chunk.text:
+                                chunk_num += 1
+                                chunk_len = len(chunk.text)
+                                logger.debug(f"Gemini chunk received | persona={persona.name} chunk_num={chunk_num} chunk_len={chunk_len}")
+                                yield chunk.text
+                        logger.info(f"Gemini streaming complete | persona={persona.name} model={model_name} total_chunks={chunk_num}")
+                    except Exception as chunk_error:
+                        logger.error(f"Gemini streaming chunk error | persona={persona.name} chunk_num={chunk_num} error_type={type(chunk_error).__name__} error={str(chunk_error)}", exc_info=True)
+                        yield f"Error: {str(chunk_error)}"
 
-        except Exception as e:
-            logger.error(f"Gemini streaming API error | persona={persona.name} persona_id={persona.id} error_type={type(e).__name__} error={str(e)}", exc_info=True)
-            return GeminiResult(success=False, error=f"Gemini API error: {str(e)}")
+                logger.info(f"Streaming model {model_name} succeeded for persona {persona.name}")
+                return GeminiResult(success=True, data=chunk_generator())
+
+            except Exception as e:
+                last_error = e
+                error_str = str(e).lower()
+                logger.warning(f"Gemini streaming API error | persona={persona.name} model={model_name} error_type={type(e).__name__} error={str(e)}")
+
+                if is_last_model:
+                    # All models failed
+                    logger.error(f"All streaming models failed for persona {persona.name}. Last error: {str(last_error)}")
+                    return GeminiResult(success=False, error=f"Gemini API error (all models failed): {str(last_error)}")
+                # Try next model
+
+        # Should never reach here, but just in case
+        return GeminiResult(success=False, error=f"All models failed: {str(last_error)}")
 
     def route_message_to_personas(
         self,
@@ -692,17 +786,16 @@ If the message mentions a persona by name (e.g., "@PersonaName"), prioritize tha
 Provide ONLY the JSON array, no additional text."""
 
         try:
-            model_name = model or self._default_model
             config = types.GenerateContentConfig()
 
-            logger.info(f"AI routing request | participants={len(participant_personas)} max_responders={max_responders} model={model_name}")
+            logger.info(f"AI routing request | participants={len(participant_personas)} max_responders={max_responders}")
 
-            # Use retry wrapper for API call
-            response = _make_api_call_with_retry(
+            # Use model fallback router for API call
+            response = _make_api_call_with_model_fallback(
                 self._client,
-                model_name,
                 prompt,
-                config
+                config,
+                logger
             )
 
             response_text = response.text if hasattr(response, 'text') else str(response)

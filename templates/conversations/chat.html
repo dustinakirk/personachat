@@ -2,6 +2,53 @@
 
 {% block title %}{{ (conversation or {}).get('title', 'Conversation') }} - PersonaChat{% endblock %}
 
+{# Helper functions #}
+{% macro get_initials(name) -%}
+    {%- set parts = name.split() -%}
+    {%- if parts|length >= 2 -%}
+        {{ parts[0][0] }}{{ parts[1][0] }}
+    {%- else -%}
+        {{ name[:2] }}
+    {%- endif -%}
+{%- endmacro %}
+
+{% macro get_avatar_color(name, is_user=False) -%}
+    {%- if is_user -%}
+        #FF6B6B
+    {%- else -%}
+        {%- set cool_colors = [
+            '#9B59B6', '#3498DB', '#16A085', '#27AE60', '#5C6BC0',
+            '#8E44AD', '#2980B9', '#1ABC9C', '#2ECC71', '#7986CB',
+            '#BB8FCE', '#5DADE2', '#48C9B0', '#52B788', '#3F51B5',
+            '#A569BD', '#85C1E2', '#4ECDC4', '#7CB342', '#26C6DA',
+            '#9C27B0', '#45B7D1', '#28A2AB', '#98D8C8', '#00BCD4',
+            '#673AB7'
+        ] -%}
+        {%- set first_letter = name[0]|upper if name else 'A' -%}
+        {%- set index = (first_letter|int(base=36) - 10) % 26 -%}
+        {{ cool_colors[index] }}
+    {%- endif -%}
+{%- endmacro %}
+
+{% macro format_date(date_str) -%}
+    {%- if date_str -%}
+        {%- set date = date_str[:10] if date_str is string else date_str.strftime('%Y-%m-%d') -%}
+        {%- set today = now().strftime('%Y-%m-%d') -%}
+        {%- set yesterday = (now() - timedelta(days=1)).strftime('%Y-%m-%d') -%}
+        {%- if date == today -%}
+            Today
+        {%- elif date == yesterday -%}
+            Yesterday
+        {%- else -%}
+            {%- if date_str is string -%}
+                {{ date_str[:10]|replace('-', '/')|strptime('%Y/%m/%d')|strftime('%A, %B %-d') }}
+            {%- else -%}
+                {{ date_str.strftime('%A, %B %-d') }}
+            {%- endif -%}
+        {%- endif -%}
+    {%- endif -%}
+{%- endmacro %}
+
 {% block content %}
 <div class="chat-container">
     <div class="chat-main">
@@ -51,7 +98,7 @@
             {% if conversation %}
             <button
                 id="add-context-btn"
-                class="btn btn-link context-btn"
+                class="btn-link context-btn"
                 onclick="openContextDrawer()"
                 title="Add context to help inform persona responses"
             >
@@ -66,21 +113,38 @@
         <!-- Messages Container -->
         <div class="messages-container" id="messages-container">
             {% if messages %}
+            {% set current_date = namespace(value='') %}
             {% for message in messages %}
-            <div class="message {% if message.is_user_message %}user-message{% else %}persona-message{% endif %}">
-                <div class="message-header">
-                    <strong class="speaker-name">{{ message.speaker_name }}</strong>
-                    {% if not message.is_user_message and message.speaker_role %}
-                    <span class="speaker-role">{{ message.speaker_role }}</span>
-                    {% endif %}
-                    <span class="message-time">
-                        {% if message.created_at %}
-                            {{ message.created_at[:16].replace('T', ' ') if message.created_at is string else message.created_at.strftime('%I:%M %p') }}
+                {# Extract date from message timestamp #}
+                {% set message_date = message.created_at[:10] if message.created_at is string else message.created_at.strftime('%Y-%m-%d') %}
+
+                {# Show date separator if date changed #}
+                {% if message_date != current_date.value %}
+                    {% set current_date.value = message_date %}
+                    <div class="date-separator">
+                        <div class="date-pill">{{ format_date(message.created_at) }}</div>
+                    </div>
+                {% endif %}
+
+                {# Message with avatar #}
+                <div class="message {% if message.is_user_message %}user-message{% else %}persona-message{% endif %}">
+                    <div class="message-avatar" style="background-color: {{ message.avatar_color or get_avatar_color(message.speaker_name, message.is_user_message) }}">
+                        {% if message.avatar_emoji %}
+                            {{ message.avatar_emoji }}
+                        {% else %}
+                            {{ get_initials(message.speaker_name) }}
                         {% endif %}
-                    </span>
+                    </div>
+                    <div class="message-bubble">
+                        <div class="message-header">
+                            <strong class="speaker-name">{{ message.speaker_name }}</strong>
+                            {% if not message.is_user_message and message.speaker_role %}
+                            <span class="speaker-role">{{ message.speaker_role }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="message-content">{{ message.content }}</div>
+                    </div>
                 </div>
-                <div class="message-content">{{ message.content }}</div>
-            </div>
             {% endfor %}
             {% else %}
             <div class="empty-messages">
@@ -178,6 +242,15 @@ const existingParticipantIds = [
 setExistingPersonas(existingParticipantIds);
 {% endif %}
 
+// Initialize lastMessageDate from existing messages
+{% if messages and messages|length > 0 %}
+{% set last_msg = messages[-1] %}
+{% set last_date = last_msg.created_at[:10] if last_msg.created_at is string else last_msg.created_at.strftime('%Y-%m-%d') %}
+let lastMessageDate = "{{ last_date }}";
+{% else %}
+let lastMessageDate = null;
+{% endif %}
+
 // Initialize persona selector for new conversations
 async function initPersonaSelector() {
     const selector = document.getElementById('persona-selector');
@@ -241,8 +314,79 @@ function selectPersona(personaId, personaName) {
     window.location.href = `/conversations/quick-start/${personaId}`;
 }
 
+// Helper functions for avatars and dates
+function getInitials(name) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+}
+
+function getAvatarColor(name, isUser = false) {
+    // User gets coral color
+    if (isUser) {
+        return '#FF6B6B';
+    }
+
+    // Personas get cool colors based on first letter (A-Z mapping)
+    const coolColors = [
+        '#9B59B6', '#3498DB', '#16A085', '#27AE60', '#5C6BC0',  // A-E
+        '#8E44AD', '#2980B9', '#1ABC9C', '#2ECC71', '#7986CB',  // F-J
+        '#BB8FCE', '#5DADE2', '#48C9B0', '#52B788', '#3F51B5',  // K-O
+        '#A569BD', '#85C1E2', '#4ECDC4', '#7CB342', '#26C6DA',  // P-T
+        '#9C27B0', '#45B7D1', '#28A2AB', '#98D8C8', '#00BCD4',  // U-Y
+        '#673AB7'                                               // Z
+    ];
+
+    const firstLetter = name.charAt(0).toUpperCase();
+    const charCode = firstLetter.charCodeAt(0);
+
+    // A=65, Z=90 in ASCII
+    let index = 0;
+    if (charCode >= 65 && charCode <= 90) {
+        index = charCode - 65; // 0-25
+    }
+
+    return coolColors[index];
+}
+
+function formatDate(date) {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const dateStr = date.toISOString().split('T')[0];
+    const todayStr = today.toISOString().split('T')[0];
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    if (dateStr === todayStr) {
+        return 'Today';
+    } else if (dateStr === yesterdayStr) {
+        return 'Yesterday';
+    } else {
+        const options = { weekday: 'long', month: 'long', day: 'numeric' };
+        return date.toLocaleDateString('en-US', options);
+    }
+}
+
+function checkAndAddDateSeparator(date) {
+    const dateStr = date.toISOString().split('T')[0];
+
+    if (lastMessageDate !== dateStr) {
+        lastMessageDate = dateStr;
+        const messagesContainer = document.getElementById('messages-container');
+
+        const separator = document.createElement('div');
+        separator.className = 'date-separator';
+        separator.innerHTML = `<div class="date-pill">${formatDate(date)}</div>`;
+
+        messagesContainer.appendChild(separator);
+    }
+}
+
 // Helper to add a message to the DOM
-function addMessageToDOM(speakerName, speakerRole, content, isUser = false, personaId = null) {
+function addMessageToDOM(speakerName, speakerRole, content, isUser = false, personaId = null, avatarEmoji = null, avatarColor = null) {
     const messagesContainer = document.getElementById('messages-container');
 
     // Remove "empty messages" placeholder if it exists
@@ -251,22 +395,31 @@ function addMessageToDOM(speakerName, speakerRole, content, isUser = false, pers
         emptyMsg.remove();
     }
 
+    // Add date separator if needed
+    const now = new Date();
+    checkAndAddDateSeparator(now);
+
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${isUser ? 'user-message' : 'persona-message'}`;
     if (personaId) {
         messageDiv.dataset.personaId = personaId;
     }
 
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const initials = getInitials(speakerName);
+    const bgColor = avatarColor || getAvatarColor(speakerName, isUser);
+    const avatarContent = avatarEmoji || initials;
 
     messageDiv.innerHTML = `
-        <div class="message-header">
-            <strong class="speaker-name">${speakerName}</strong>
-            ${!isUser && speakerRole ? `<span class="speaker-role">${speakerRole}</span>` : ''}
-            <span class="message-time">${timeStr}</span>
+        <div class="message-avatar" style="background-color: ${bgColor}">
+            ${avatarContent}
         </div>
-        <div class="message-content">${content}</div>
+        <div class="message-bubble">
+            <div class="message-header">
+                <strong class="speaker-name">${speakerName}</strong>
+                ${!isUser && speakerRole ? `<span class="speaker-role">${speakerRole}</span>` : ''}
+            </div>
+            <div class="message-content">${content}</div>
+        </div>
     `;
 
     messagesContainer.appendChild(messageDiv);
@@ -276,8 +429,8 @@ function addMessageToDOM(speakerName, speakerRole, content, isUser = false, pers
 }
 
 // Helper to add typing indicator
-function addTypingIndicator(personaId, personaName) {
-    const messageDiv = addMessageToDOM(personaName, '', '', false, personaId);
+function addTypingIndicator(personaId, personaName, avatarEmoji = null, avatarColor = null) {
+    const messageDiv = addMessageToDOM(personaName, '', '', false, personaId, avatarEmoji, avatarColor);
     messageDiv.classList.add('message-placeholder');
 
     const contentDiv = messageDiv.querySelector('.message-content');
@@ -385,7 +538,12 @@ function startStreamingResponses(messageId, responders, actualConversationId = n
     // Add typing indicators for all responders
     const typingElements = {};
     responders.forEach(responder => {
-        typingElements[responder.id] = addTypingIndicator(responder.id, responder.name);
+        typingElements[responder.id] = addTypingIndicator(
+            responder.id,
+            responder.name,
+            responder.avatar_emoji,
+            responder.avatar_color
+        );
     });
 
     // Track accumulated responses and completion

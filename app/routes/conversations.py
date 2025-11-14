@@ -416,7 +416,9 @@ def send_message(conversation_id):
     responder_data = [{
         "id": p.id,
         "name": p.name,
-        "role": p.role
+        "role": p.role,
+        "avatar_emoji": p.avatar_emoji,
+        "avatar_color": p.avatar_color
     } for p in responders]
 
     # Store responder IDs in session for the stream endpoint to use
