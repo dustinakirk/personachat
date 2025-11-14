@@ -1,0 +1,37 @@
+{% if recent_conversations %}
+  {% for conv in recent_conversations[:5] %}
+    <div class="nav-item-wrapper {% if current_conversation and current_conversation.id == conv.id %}active{% endif %}" data-conversation-id="{{ conv.id }}">
+      <a href="{{ url_for('conversations.chat', conversation_id=conv.id) }}"
+         class="nav-item">
+        <span class="nav-item-title">{{ conv.title or 'Untitled Conversation' }}</span>
+        {% if conv.last_message_preview %}
+          <span class="nav-item-subtitle">{{ conv.last_message_preview[:50] }}...</span>
+        {% endif %}
+      </a>
+      <button class="nav-item-actions"
+              onclick="toggleConversationMenu(event, '{{ conv.id }}')"
+              aria-label="Conversation actions">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <circle cx="8" cy="3" r="1.5"/>
+          <circle cx="8" cy="8" r="1.5"/>
+          <circle cx="8" cy="13" r="1.5"/>
+        </svg>
+      </button>
+      <div class="nav-item-menu" id="conversation-menu-{{ conv.id }}" style="display: none;">
+        <button class="nav-menu-item nav-menu-item-danger"
+                onclick='deleteConversationFromNav(event, "{{ conv.id }}", {{ (conv.title or "Untitled Conversation") | tojson }})'>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+          Delete conversation
+        </button>
+      </div>
+    </div>
+  {% endfor %}
+  {% if recent_conversations|length > 5 %}
+    <a href="#" class="nav-item-more" onclick="showAllConversations(event)">more...</a>
+  {% endif %}
+{% else %}
+  <div class="nav-empty">No conversations yet</div>
+{% endif %}

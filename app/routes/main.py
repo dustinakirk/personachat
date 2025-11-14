@@ -32,9 +32,9 @@ def login_required(view_func):
 def index():
     user = session.get("user")
 
-    # If logged in, redirect to personas library (new home page)
+    # If logged in, redirect to conversations (chat-first experience)
     if user:
-        return redirect(url_for("personas.library"))
+        return redirect(url_for("conversations.index"))
 
     # If not logged in, show landing page
     return render_template("index.html", user=user)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Generator, Optional, List, Dict, Any
 
@@ -15,6 +16,8 @@ from tenacity import (
 )
 
 from app.models import PersonaEnrichment, Persona, RelationshipSuggestion
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -475,7 +478,7 @@ Tools: {persona.tools or 'Standard workplace tools'}
 
 User's message: {user_message}
 
-Respond as {persona.name} would, staying in character. Keep your response concise (2-4 sentences) and relevant to the conversation.
+Respond as {persona.name} would, staying in character. Keep your response very concise and relevant to the conversation. Use specific examples when appropriate.
 
 IMPORTANT:
 - Reference your relationships with other personas naturally when relevant
@@ -512,6 +515,7 @@ IMPORTANT:
         chat_history: List[Dict[str, Any]],
         other_personas: List[Persona],
         relationships: Optional[Dict[str, Dict[str, Any]]] = None,
+        conversation_context: Optional[str] = None,
         model: Optional[str] = None
     ) -> GeminiResult:
         """
@@ -525,6 +529,7 @@ IMPORTANT:
             chat_history: Recent chat messages for context
             other_personas: Other personas in the conversation
             relationships: Dict mapping persona_id to relationship data
+            conversation_context: Optional user-provided context for the conversation
             model: Model to use (defaults to service default)
 
         Returns:
@@ -565,6 +570,11 @@ Tools: {persona.tools or 'Standard workplace tools'}
                         other_context += f"\n  How you interact: {rel.get('interaction_style')}"
                 other_context += "\n"
 
+        # Build conversation context if provided
+        context_section = ""
+        if conversation_context:
+            context_section = f"\n\n**Conversation Context:**\n{conversation_context}\n"
+
         # Build chat history context
         history_context = ""
         if chat_history:
@@ -574,7 +584,7 @@ Tools: {persona.tools or 'Standard workplace tools'}
                 content = msg.get("content", "")
                 history_context += f"{speaker}: {content}\n"
 
-        prompt = f"""{persona_context}{other_context}{history_context}
+        prompt = f"""{persona_context}{other_context}{context_section}{history_context}
 
 User's message: {user_message}
 
@@ -590,6 +600,8 @@ IMPORTANT:
             model_name = model or self._default_model
             config = types.GenerateContentConfig()
 
+            logger.info(f"Gemini streaming API call | persona={persona.name} persona_id={persona.id} model={model_name} prompt_len={len(prompt)}")
+
             # Generate streaming response
             response_stream = self._client.models.generate_content_stream(
                 model=model_name,
@@ -599,13 +611,23 @@ IMPORTANT:
 
             # Create generator that yields chunks
             def chunk_generator():
-                for chunk in response_stream:
-                    if hasattr(chunk, 'text') and chunk.text:
-                        yield chunk.text
+                chunk_num = 0
+                try:
+                    for chunk in response_stream:
+                        if hasattr(chunk, 'text') and chunk.text:
+                            chunk_num += 1
+                            chunk_len = len(chunk.text)
+                            logger.debug(f"Gemini chunk received | persona={persona.name} chunk_num={chunk_num} chunk_len={chunk_len}")
+                            yield chunk.text
+                    logger.info(f"Gemini streaming complete | persona={persona.name} total_chunks={chunk_num}")
+                except Exception as chunk_error:
+                    logger.error(f"Gemini streaming chunk error | persona={persona.name} chunk_num={chunk_num} error_type={type(chunk_error).__name__} error={str(chunk_error)}", exc_info=True)
+                    yield f"Error: {str(chunk_error)}"
 
             return GeminiResult(success=True, data=chunk_generator())
 
         except Exception as e:
+            logger.error(f"Gemini streaming API error | persona={persona.name} persona_id={persona.id} error_type={type(e).__name__} error={str(e)}", exc_info=True)
             return GeminiResult(success=False, error=f"Gemini API error: {str(e)}")
 
     def route_message_to_personas(
@@ -613,7 +635,7 @@ IMPORTANT:
         user_message: str,
         participant_personas: List[Persona],
         chat_history: List[Dict[str, Any]],
-        max_responders: int = 3,
+        max_responders: Optional[int] = None,
         model: Optional[str] = None
     ) -> GeminiResult:
         """
@@ -623,7 +645,7 @@ IMPORTANT:
             user_message: The user's message
             participant_personas: All personas in the conversation
             chat_history: Recent chat messages for context
-            max_responders: Maximum number of personas to respond (default: 3)
+            max_responders: Maximum number of personas to respond (default: None = unlimited)
             model: Model to use (defaults to service default)
 
         Returns:
@@ -648,6 +670,8 @@ IMPORTANT:
                 content = msg.get("content", "")
                 history_context += f"{speaker}: {content}\n"
 
+        max_responders_text = f"up to {max_responders}" if max_responders else "all relevant"
+
         prompt = f"""You are a conversation router. Determine which personas should respond to the user's message based on relevance.
 
 Personas in conversation:
@@ -655,10 +679,11 @@ Personas in conversation:
 
 User's message: {user_message}
 
-Select up to {max_responders} personas who should respond. Consider:
+Select {max_responders_text} personas who should respond. Consider:
 1. Expertise relevance to the topic
 2. Conversational flow (who was addressed or mentioned)
 3. Diversity of perspectives
+4. IMPORTANT: For generic questions directed at the group (like "Do you like pizza?", "What do you think?", "Anyone have thoughts?"), ALL personas should respond
 
 Return a JSON array of persona IDs who should respond, ordered by priority:
 ["persona-id-1", "persona-id-2", ...]
@@ -670,6 +695,8 @@ Provide ONLY the JSON array, no additional text."""
             model_name = model or self._default_model
             config = types.GenerateContentConfig()
 
+            logger.info(f"AI routing request | participants={len(participant_personas)} max_responders={max_responders} model={model_name}")
+
             # Use retry wrapper for API call
             response = _make_api_call_with_retry(
                 self._client,
@@ -679,6 +706,7 @@ Provide ONLY the JSON array, no additional text."""
             )
 
             response_text = response.text if hasattr(response, 'text') else str(response)
+            logger.debug(f"AI routing response | response_len={len(response_text)}")
 
             # Clean and parse JSON
             cleaned_response = response_text.strip()
@@ -692,16 +720,22 @@ Provide ONLY the JSON array, no additional text."""
 
             persona_ids = json.loads(cleaned_response)
 
-            return GeminiResult(success=True, data=persona_ids[:max_responders])
+            # Only apply max_responders limit if specified
+            if max_responders is not None:
+                persona_ids = persona_ids[:max_responders]
+
+            logger.info(f"AI routing success | selected_count={len(persona_ids)} persona_ids={persona_ids}")
+            return GeminiResult(success=True, data=persona_ids)
 
         except RetryError as e:
             # Fallback: return first persona if routing fails after retries
             last_exception = e.last_attempt.exception()
-            print(f"Routing failed after retries: {last_exception}")
+            logger.error(f"AI routing failed after retries | error={str(last_exception)} using fallback", exc_info=True)
             first_persona_id = participant_personas[0].id if participant_personas else None
             return GeminiResult(success=True, data=[first_persona_id] if first_persona_id else [])
         except json.JSONDecodeError as e:
             # Fallback: return first persona if routing fails
+            logger.error(f"AI routing JSON parse error | error={str(e)} response={cleaned_response[:200]} using fallback")
             fallback_ids = [participant_personas[0].id] if participant_personas else []
             return GeminiResult(success=True, data=fallback_ids)
         except Exception as e:

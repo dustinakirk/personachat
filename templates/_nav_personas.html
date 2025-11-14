@@ -1,0 +1,48 @@
+{% if recent_personas %}
+  {% for persona in recent_personas[:5] %}
+    {% set in_conversation = participants and persona.id in participants|map(attribute='id')|list %}
+    <div class="nav-item-wrapper{% if in_conversation %} in-conversation{% endif %}">
+      <a href="{{ url_for('conversations.quick_start', persona_id=persona.id) }}"
+         class="nav-item">
+        <span class="nav-item-title">{{ persona.name }}</span>
+        {% if persona.role %}
+          <span class="nav-item-subtitle">{{ persona.role }}</span>
+        {% endif %}
+      </a>
+      <button class="nav-item-actions" onclick="togglePersonaMenu(event, '{{ persona.id }}')" aria-label="Actions">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <circle cx="8" cy="3" r="1.5"/>
+          <circle cx="8" cy="8" r="1.5"/>
+          <circle cx="8" cy="13" r="1.5"/>
+        </svg>
+      </button>
+      <div class="nav-item-menu" id="persona-menu-{{ persona.id }}" style="display: none;">
+        <button class="nav-menu-item" onclick="editPersonaFromNav(event, '{{ persona.id }}')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+          Edit
+        </button>
+        <button class="nav-menu-item nav-menu-item-danger" onclick='deletePersonaFromNav(event, "{{ persona.id }}", {{ (persona.name or "Persona")|tojson }})'>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+          Delete
+        </button>
+      </div>
+    </div>
+  {% endfor %}
+  {% if recent_personas|length > 5 %}
+    <a href="#" class="nav-item-more" onclick="showAllPersonas(event)">more...</a>
+  {% endif %}
+  <div class="nav-section-action">
+    <button class="btn-link" onclick="showAddPersona(event)">+ Create Persona</button>
+  </div>
+{% else %}
+  <div class="nav-empty">
+    No personas yet
+    <button class="btn-link" onclick="showAddPersona(event)">+ Create Persona</button>
+  </div>
+{% endif %}

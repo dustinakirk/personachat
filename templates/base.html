@@ -14,7 +14,6 @@
         <nav class="nav-links">
           {% if user %}
             <a href="{{ url_for('personas.library') }}">Personas</a>
-            <a href="{{ url_for('conversations.list_conversations') }}">Conversations</a>
             <span class="nav-email">{{ user.email }}</span>
             <a href="{{ url_for('main.logout') }}">Logout</a>
           {% else %}

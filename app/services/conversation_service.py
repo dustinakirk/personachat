@@ -81,7 +81,10 @@ class ConversationService:
                 .single()
                 .execute()
             )
-            return SupabaseResult(True, data=result.data if result.data else {})
+            # If no data found, return failure instead of empty dict
+            if not result.data:
+                return SupabaseResult(False, error="Conversation not found")
+            return SupabaseResult(True, data=result.data)
         except APIError as api_error:
             error_dict = api_error.json() if hasattr(api_error, 'json') else {}
             error_code = error_dict.get('code', '')
@@ -117,6 +120,60 @@ class ConversationService:
             logger.exception("Error in get_user_conversations for user_id=%s", user_id)
             return SupabaseResult(False, error=str(exc))
 
+    def get_conversation_by_single_participant(self, user_id: str, persona_id: str) -> SupabaseResult:
+        """
+        Find the most recent conversation with ONLY a single specific persona.
+
+        This is used when clicking "Chat" on a persona to reuse existing single-persona
+        conversations instead of creating duplicates. Multi-persona conversations are
+        excluded to allow separate contexts.
+
+        Args:
+            user_id: User ID
+            persona_id: Persona ID to search for
+
+        Returns:
+            SupabaseResult with conversation data or None if not found
+        """
+        try:
+            # Get all user conversations with their participants (ordered by most recent)
+            result = (
+                self._client.table("conversations")
+                .select("*, conversation_participants(persona_id)")
+                .eq("user_id", user_id)
+                .order("updated_at", desc=True)
+                .execute()
+            )
+
+            if not result.data:
+                return SupabaseResult(True, data=None)
+
+            # Filter in Python for single-participant conversations with this persona
+            for conv in result.data:
+                participants = conv.get("conversation_participants", [])
+
+                # Check if this conversation has exactly 1 participant with the matching persona_id
+                if len(participants) == 1 and participants[0]["persona_id"] == persona_id:
+                    # Remove embedded participants to match standard conversation format
+                    conv.pop("conversation_participants", None)
+                    logger.info("Found existing single-persona conversation: %s for persona: %s", conv["id"], persona_id)
+                    return SupabaseResult(True, data=conv)
+
+            # No matching single-persona conversation found
+            logger.info("No existing single-persona conversation found for persona: %s", persona_id)
+            return SupabaseResult(True, data=None)
+
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            error_code = error_dict.get('code', '')
+            if error_code in ['PGRST301', 'PGRST302', 'PGRST303'] or 'JWT expired' in str(api_error):
+                raise
+            logger.error("API error in get_conversation_by_single_participant for persona_id=%s: %s", persona_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
+        except Exception as exc:
+            logger.exception("Error in get_conversation_by_single_participant for persona_id=%s", persona_id)
+            return SupabaseResult(False, error=str(exc))
+
     def update_conversation_title(self, conversation_id: str, title: str) -> SupabaseResult:
         """Update conversation title"""
         try:
@@ -136,6 +193,36 @@ class ConversationService:
             return SupabaseResult(False, error=error_dict)
         except Exception as exc:
             logger.exception("Error in update_conversation_title for conversation_id=%s", conversation_id)
+            return SupabaseResult(False, error=str(exc))
+
+    def update_conversation_context(self, conversation_id: str, context: str) -> SupabaseResult:
+        """
+        Update conversation context - background information that informs persona responses
+
+        Args:
+            conversation_id: ID of the conversation
+            context: User-provided context text to help personas understand the scenario
+
+        Returns:
+            SupabaseResult with updated conversation data
+        """
+        try:
+            result = (
+                self._client.table("conversations")
+                .update({"context": context})
+                .eq("id", conversation_id)
+                .execute()
+            )
+            return SupabaseResult(True, data=result.data[0] if result.data else {})
+        except APIError as api_error:
+            error_dict = api_error.json() if hasattr(api_error, 'json') else {}
+            error_code = error_dict.get('code', '')
+            if error_code in ['PGRST301', 'PGRST302', 'PGRST303'] or 'JWT expired' in str(api_error):
+                raise
+            logger.error("API error in update_conversation_context for conversation_id=%s: %s", conversation_id, error_dict)
+            return SupabaseResult(False, error=error_dict)
+        except Exception as exc:
+            logger.exception("Error in update_conversation_context for conversation_id=%s", conversation_id)
             return SupabaseResult(False, error=str(exc))
 
     def delete_conversation(self, conversation_id: str) -> SupabaseResult:
@@ -226,10 +313,10 @@ class ConversationService:
     def get_participants(self, conversation_id: str) -> SupabaseResult:
         """Get all participants in a conversation with persona details"""
         try:
-            # Get participant records
+            # Use join to fetch participants and persona details in a single query
             participants_result = (
                 self._client.table("conversation_participants")
-                .select("persona_id, active, joined_at")
+                .select("persona_id, active, joined_at, personas(*)")
                 .eq("conversation_id", conversation_id)
                 .execute()
             )
@@ -237,26 +324,12 @@ class ConversationService:
             if not participants_result.data:
                 return SupabaseResult(True, data={"participants": []})
 
-            # Get persona IDs
-            persona_ids = [p["persona_id"] for p in participants_result.data]
-
-            # Fetch full persona details
-            personas_result = (
-                self._client.table("personas")
-                .select("*")
-                .in_("id", persona_ids)
-                .execute()
-            )
-
-            personas = personas_result.data if personas_result.data else []
-
-            # Merge participant status with persona data
+            # Flatten the joined data structure
             participants = []
             for p in participants_result.data:
-                persona = next((per for per in personas if per["id"] == p["persona_id"]), None)
-                if persona:
+                if p.get("personas"):
                     participants.append({
-                        **persona,
+                        **p["personas"],
                         "active": p["active"],
                         "joined_at": p["joined_at"]
                     })
@@ -329,44 +402,39 @@ class ConversationService:
             logger.exception("Error in add_persona_message for conversation_id=%s", conversation_id)
             return SupabaseResult(False, error=str(exc))
 
-    def get_messages(self, conversation_id: str, limit: int = 100) -> SupabaseResult:
+    def get_messages(self, conversation_id: str, limit: int = 100, order_desc: bool = False) -> SupabaseResult:
         """Get messages in a conversation with speaker information"""
         try:
-            result = (
+            # Use join to fetch messages with persona details in a single query
+            query = (
                 self._client.table("messages")
-                .select("*")
+                .select("*, personas(id, name, role)")
                 .eq("conversation_id", conversation_id)
-                .order("created_at")
-                .limit(limit)
-                .execute()
             )
 
+            # Apply ordering based on order_desc parameter
+            if order_desc:
+                query = query.order("created_at", desc=True)
+            else:
+                query = query.order("created_at")
+
+            result = query.limit(limit).execute()
+
             messages = result.data if result.data else []
-
-            # Fetch persona details for persona messages
-            persona_ids = [m["persona_id"] for m in messages if m.get("persona_id")]
-            personas = {}
-
-            if persona_ids:
-                personas_result = (
-                    self._client.table("personas")
-                    .select("id, name, role")
-                    .in_("id", persona_ids)
-                    .execute()
-                )
-                personas = {p["id"]: p for p in personas_result.data} if personas_result.data else {}
 
             # Enrich messages with speaker info
             enriched_messages = []
             for msg in messages:
                 enriched_msg = {**msg}
-                if msg.get("persona_id") and msg["persona_id"] in personas:
-                    enriched_msg["speaker_name"] = personas[msg["persona_id"]]["name"]
-                    enriched_msg["speaker_role"] = personas[msg["persona_id"]].get("role")
+                if msg.get("persona_id") and msg.get("personas"):
+                    enriched_msg["speaker_name"] = msg["personas"]["name"]
+                    enriched_msg["speaker_role"] = msg["personas"].get("role")
                     enriched_msg["is_user_message"] = False
                 else:
                     enriched_msg["speaker_name"] = "You"
                     enriched_msg["is_user_message"] = True
+                # Remove the nested personas object to keep the message structure clean
+                enriched_msg.pop("personas", None)
                 enriched_messages.append(enriched_msg)
 
             return SupabaseResult(True, data={"messages": enriched_messages})

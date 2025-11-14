@@ -5,32 +5,87 @@
 {% block content %}
 <div class="container">
 
-    <!-- Recent Conversations (if any exist) -->
-    {% if conversations %}
-    <div class="dashboard-card recent-conversations">
+    <!-- Conversations Section -->
+    <div class="dashboard-card conversations-section">
         <div class="card-header">
-            <h2>Recent Conversations</h2>
-            <a href="{{ url_for('conversations.list_conversations') }}" class="view-all">View All</a>
+            <h2>Conversations</h2>
+            <a href="{{ url_for('conversations.create') }}" class="btn btn-primary btn-small">
+                <i class="icon-plus"></i> New Conversation
+            </a>
         </div>
 
-        <div class="conversations-list">
+        {% if conversations %}
+        <div class="conversations-grid">
             {% for conversation in conversations %}
-            <a href="{{ url_for('conversations.chat', conversation_id=conversation.id) }}" class="conversation-item">
-                <div class="conversation-title">
-                    {{ conversation.title or 'Untitled Conversation' }}
+            <div class="conversation-card" data-conversation-id="{{ conversation.id }}">
+                <div class="conversation-card-header">
+                    <a href="{{ url_for('conversations.chat', conversation_id=conversation.id) }}" class="conversation-title-link">
+                        {{ conversation.title or 'Untitled Conversation' }}
+                    </a>
+                    <div class="conversation-actions-menu">
+                        <button class="menu-btn" onclick="toggleMenu('{{ conversation.id }}')">⋯</button>
+                        <div class="action-menu" id="menu-{{ conversation.id }}">
+                            <button onclick="renameConversation('{{ conversation.id }}', '{{ conversation.title or 'Untitled Conversation' }}')">
+                                Rename
+                            </button>
+                            <button onclick="deleteConversation('{{ conversation.id }}')" class="delete-btn">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <div class="conversation-meta">
-                    {% if conversation.updated_at %}
-                        {{ conversation.updated_at[:10] if conversation.updated_at is string else conversation.updated_at.strftime('%b %d') }}
-                    {% else %}
-                        Never
+
+                {% if conversation.participants %}
+                <div class="conversation-participants">
+                    {% for participant in conversation.participants[:4] %}
+                    <span class="participant-pill">{{ participant.name }}</span>
+                    {% endfor %}
+                    {% if conversation.participants|length > 4 %}
+                    <span class="participant-pill more">+{{ conversation.participants|length - 4 }}</span>
                     {% endif %}
                 </div>
-            </a>
+                {% endif %}
+
+                <div class="conversation-footer">
+                    <span class="conversation-date">
+                        {% if conversation.updated_at %}
+                            {{ conversation.updated_at|relative_time }}
+                        {% else %}
+                            Never
+                        {% endif %}
+                    </span>
+                    <span class="participant-count">
+                        {{ conversation.participants|length if conversation.participants else 0 }} persona(s)
+                    </span>
+                </div>
+
+                <div class="conversation-card-actions">
+                    <a href="{{ url_for('conversations.chat', conversation_id=conversation.id) }}" class="btn btn-small btn-primary">
+                        Open Chat
+                    </a>
+                </div>
+            </div>
             {% endfor %}
         </div>
+
+        {% if total_conversations > conversations|length %}
+        <div class="pagination">
+            {% if page > 1 %}
+            <a href="?page={{ page - 1 }}{% if search_query %}&q={{ search_query }}{% endif %}" class="btn btn-secondary btn-small">Previous</a>
+            {% endif %}
+            <span class="page-info">Page {{ page }} of {{ (total_conversations / per_page)|round(0, 'ceil')|int }}</span>
+            {% if page * per_page < total_conversations %}
+            <a href="?page={{ page + 1 }}{% if search_query %}&q={{ search_query }}{% endif %}" class="btn btn-secondary btn-small">Next</a>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty-state-small">
+            <p>No conversations yet. Start your first multi-persona conversation!</p>
+            <a href="{{ url_for('conversations.create') }}" class="btn btn-primary">Start a Conversation</a>
+        </div>
+        {% endif %}
     </div>
-    {% endif %}
 
     <!-- Persona Library Header -->
     <div class="page-header">
@@ -79,32 +134,12 @@
 </div>
 
 <style>
-.welcome-section {
-    margin-bottom: 2rem;
-}
-
-.welcome-section h1 {
-    margin: 0 0 0.5rem 0;
-    font-family: var(--font-header);
-}
-
-.welcome-text {
-    color: var(--text-dim);
-    font-size: 1.1rem;
-}
-
 .dashboard-card {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 1.5rem;
     margin-bottom: 2rem;
-}
-
-.dashboard-card h2 {
-    margin: 0 0 1.5rem 0;
-    font-size: 1.2rem;
-    font-family: var(--font-header);
 }
 
 .card-header {
@@ -117,51 +152,182 @@
 .card-header h2 {
     margin: 0;
     font-family: var(--font-header);
+    font-size: 1.4rem;
 }
 
-.view-all {
-    color: var(--accent);
-    font-size: 0.9rem;
-    text-decoration: none;
+.btn-small {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
 }
 
-.view-all:hover {
-    text-decoration: underline;
+/* Conversations Grid */
+.conversations-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
 }
 
-.conversations-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-}
-
-.conversation-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem;
+.conversation-card {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 6px;
-    text-decoration: none;
-    color: var(--text);
+    padding: 1rem;
     transition: all 0.2s;
+    position: relative;
 }
 
-.conversation-item:hover {
+.conversation-card:hover {
     border-color: var(--accent);
-    transform: translateX(4px);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-.conversation-title {
+.conversation-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    margin-bottom: 0.75rem;
+    gap: 0.5rem;
+}
+
+.conversation-title-link {
+    flex: 1;
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text);
+    text-decoration: none;
+    word-break: break-word;
+}
+
+.conversation-title-link:hover {
+    color: var(--accent);
+}
+
+.conversation-actions-menu {
+    position: relative;
+}
+
+.menu-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 0 0.5rem;
+    line-height: 1;
+    transition: color 0.2s;
+}
+
+.menu-btn:hover {
+    color: var(--accent);
+}
+
+.action-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 100;
+    min-width: 120px;
+}
+
+.action-menu.active {
+    display: block;
+}
+
+.action-menu button {
+    display: block;
+    width: 100%;
+    padding: 0.6rem 1rem;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.2s;
+    font-size: 0.9rem;
+}
+
+.action-menu button:hover {
+    background: var(--bg);
+}
+
+.action-menu button.delete-btn {
+    color: #ff4444;
+}
+
+.action-menu button.delete-btn:hover {
+    background: rgba(255, 68, 68, 0.1);
+}
+
+.conversation-participants {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+}
+
+.participant-pill {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    background: var(--accent);
+    color: white;
+    border-radius: 12px;
+    font-size: 0.7rem;
     font-weight: 500;
 }
 
-.conversation-meta {
-    font-size: 0.85rem;
+.participant-pill.more {
+    background: var(--bg);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+}
+
+.conversation-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-bottom: 0.75rem;
+}
+
+.conversation-card-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Pagination */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.page-info {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+}
+
+/* Empty State */
+.empty-state-small {
+    text-align: center;
+    padding: 2rem;
     color: var(--text-dim);
 }
 
+.empty-state-small p {
+    margin-bottom: 1rem;
+}
+
+/* Personas Section */
 .page-header {
     display: flex;
     justify-content: space-between;
@@ -226,4 +392,100 @@
     margin-bottom: 2rem;
 }
 </style>
+
+<script>
+// Toggle action menu
+function toggleMenu(conversationId) {
+    const menu = document.getElementById(`menu-${conversationId}`);
+    const allMenus = document.querySelectorAll('.action-menu');
+
+    // Close all other menus
+    allMenus.forEach(m => {
+        if (m.id !== `menu-${conversationId}`) {
+            m.classList.remove('active');
+        }
+    });
+
+    menu.classList.toggle('active');
+}
+
+// Close menus when clicking outside
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.conversation-actions-menu')) {
+        document.querySelectorAll('.action-menu').forEach(menu => {
+            menu.classList.remove('active');
+        });
+    }
+});
+
+// Rename conversation
+async function renameConversation(conversationId, currentTitle) {
+    const newTitle = prompt('Enter new conversation title:', currentTitle);
+
+    if (!newTitle || newTitle === currentTitle) {
+        return;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('title', newTitle);
+
+        const response = await fetch(`/conversations/${conversationId}/title`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Update title in DOM
+            const card = document.querySelector(`[data-conversation-id="${conversationId}"]`);
+            const titleLink = card.querySelector('.conversation-title-link');
+            titleLink.textContent = newTitle;
+
+            // Close menu
+            document.getElementById(`menu-${conversationId}`).classList.remove('active');
+        } else {
+            alert('Error renaming conversation: ' + data.error);
+        }
+    } catch (error) {
+        alert('Error renaming conversation: ' + error.message);
+    }
+}
+
+// Delete conversation
+async function deleteConversation(conversationId) {
+    if (!confirm('Delete this conversation? This action cannot be undone.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/conversations/${conversationId}/delete`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Remove card from DOM with animation
+            const card = document.querySelector(`[data-conversation-id="${conversationId}"]`);
+            card.style.opacity = '0';
+            card.style.transform = 'scale(0.9)';
+            setTimeout(() => {
+                card.remove();
+
+                // Check if grid is now empty
+                const grid = document.querySelector('.conversations-grid');
+                if (grid && grid.children.length === 0) {
+                    location.reload(); // Reload to show empty state
+                }
+            }, 300);
+        } else {
+            alert('Error deleting conversation: ' + data.error);
+        }
+    } catch (error) {
+        alert('Error deleting conversation: ' + error.message);
+    }
+}
+</script>
 {% endblock %}

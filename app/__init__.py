@@ -1,8 +1,10 @@
 import logging
+import logging.config
 import jwt
 import time
 from datetime import datetime
 from pathlib import Path
+import os
 
 from flask import Flask, session, g, redirect, url_for, flash
 
@@ -11,7 +13,46 @@ from .services.gemini_service import GeminiService
 from .services.supabase_service import SupabaseService
 from .services.persona_service import PersonaService
 from .services.conversation_service import ConversationService
+from .utils import relative_time
 
+# Configure logging
+def setup_logging():
+    """Configure logging for the application"""
+    log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+
+    logging_config = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'detailed': {
+                'format': '%(asctime)s [%(levelname)s] %(name)s | %(message)s',
+                'datefmt': '%Y-%m-%d %H:%M:%S'
+            },
+        },
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+                'level': log_level,
+                'formatter': 'detailed',
+                'stream': 'ext://sys.stdout'
+            },
+        },
+        'loggers': {
+            'app': {
+                'level': log_level,
+                'handlers': ['console'],
+                'propagate': False
+            },
+        },
+        'root': {
+            'level': 'WARNING',
+            'handlers': ['console']
+        }
+    }
+
+    logging.config.dictConfig(logging_config)
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -46,6 +87,9 @@ def create_app() -> Flask:
     app.register_blueprint(main_bp)
     app.register_blueprint(personas_bp)
     app.register_blueprint(conversations_bp)
+
+    # Register custom Jinja2 filters
+    app.jinja_env.filters['relative_time'] = relative_time
 
     @app.before_request
     def setup_authenticated_services():

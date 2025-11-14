@@ -36,6 +36,11 @@ def library():
     user_id = session["user"]["id"]
     search_query = request.args.get("q", "").strip()
 
+    # Pagination for conversations
+    page = request.args.get("page", 1, type=int)
+    per_page = 10
+    offset = (page - 1) * per_page
+
     # Get personas (with optional search)
     if search_query:
         result = g.persona_service.search_personas(user_id, search_query)
@@ -48,12 +53,32 @@ def library():
         personas = []
         flash(f"Error loading personas: {result.error}", "error")
 
-    # Get recent conversations for dashboard view
+    # Get paginated conversations with participants
     conversations = []
+    total_conversations = 0
     if g.conversation_service:
-        conv_result = g.conversation_service.get_user_conversations(user_id, limit=5)
+        # Get total count first
+        total_result = g.conversation_service.get_user_conversations(user_id, limit=1000)
+        if total_result.success:
+            total_conversations = len(total_result.data.get("conversations", []))
+
+        # Get paginated conversations
+        conv_result = g.conversation_service.get_user_conversations(user_id, limit=per_page)
         if conv_result.success:
-            conversations = conv_result.data.get("conversations", [])
+            conversations_raw = conv_result.data.get("conversations", [])
+
+            # Apply manual pagination (since service doesn't support offset)
+            conversations_raw = conversations_raw[offset:offset + per_page]
+
+            # Enrich each conversation with participant data
+            for conv in conversations_raw:
+                # Get participants for this conversation
+                participants_result = g.conversation_service.get_participants(conv["id"])
+                if participants_result.success:
+                    conv["participants"] = participants_result.data.get("participants", [])
+                else:
+                    conv["participants"] = []
+                conversations.append(conv)
 
     # Get persona count for showing getting started guide
     persona_count = len(personas)
@@ -66,9 +91,304 @@ def library():
         personas=personas,
         search_query=search_query,
         conversations=conversations,
+        total_conversations=total_conversations,
+        page=page,
+        per_page=per_page,
         persona_count=persona_count,
         created_persona_id=created_persona_id
     )
+
+
+@personas_bp.route("/api/list", methods=["GET"])
+@login_required
+@requires_persona_service
+def api_list():
+    """AJAX endpoint to fetch all personas as JSON (for persona selector)"""
+    user_id = session["user"]["id"]
+    search_query = request.args.get("q", "").strip()
+
+    # Get personas (with optional search)
+    if search_query:
+        result = g.persona_service.search_personas(user_id, search_query)
+    else:
+        result = g.persona_service.get_personas(user_id)
+
+    if result.success:
+        return jsonify({
+            "success": True,
+            "personas": result.data.get("personas", [])
+        })
+    else:
+        return jsonify({
+            "success": False,
+            "error": result.error
+        }), 500
+
+
+@personas_bp.route("/api/<persona_id>", methods=["GET"])
+@login_required
+@requires_persona_service
+def api_get(persona_id):
+    """AJAX endpoint to fetch a single persona as JSON"""
+    user_id = session["user"]["id"]
+
+    result = g.persona_service.get_persona(persona_id)
+
+    if not result.success:
+        return jsonify({
+            "success": False,
+            "error": result.error
+        }), 404
+
+    persona = result.data
+
+    # Verify ownership
+    if persona.user_id != user_id:
+        return jsonify({
+            "success": False,
+            "error": "Permission denied"
+        }), 403
+
+    return jsonify({
+        "success": True,
+        "persona": {
+            "id": persona.id,
+            "name": persona.name,
+            "role": persona.role,
+            "company": persona.company,
+            "age_stage": persona.age_stage,
+            "goals": persona.goals or [],
+            "pains": persona.pains or [],
+            "behaviors": persona.behaviors,
+            "tools": persona.tools,
+            "quotes": persona.quotes or [],
+            "tags": persona.tags or [],
+            "notes": persona.notes
+        }
+    })
+
+
+@personas_bp.route("/api/enrich", methods=["POST"])
+@login_required
+@requires_services
+def api_enrich():
+    """AJAX endpoint to enrich a persona description"""
+    user_id = session["user"]["id"]
+
+    try:
+        data = request.get_json()
+        description = data.get("description", "").strip()
+
+        if not description:
+            return jsonify({
+                "success": False,
+                "error": "Please provide a persona description."
+            }), 400
+
+        # Fetch existing personas for relationship detection
+        existing_personas = []
+        if g.persona_service:
+            personas_result = g.persona_service.get_personas(user_id)
+            if personas_result.success:
+                existing_personas = personas_result.data.get("personas", [])
+
+        # Generate AI enrichment
+        enrichment_result = current_app.gemini_service.generate_persona_enrichment(
+            description,
+            existing_personas=existing_personas
+        )
+
+        if not enrichment_result.success:
+            return jsonify({
+                "success": False,
+                "error": enrichment_result.error
+            }), 500
+
+        enrichment = enrichment_result.data
+
+        # Convert enrichment to dict for JSON response
+        return jsonify({
+            "success": True,
+            "data": {
+                "name": enrichment.name,
+                "role": enrichment.role,
+                "company": enrichment.company,
+                "age_stage": enrichment.age_stage,
+                "goals": enrichment.goals,
+                "pains": enrichment.pains,
+                "behaviors": enrichment.behaviors,
+                "tools": enrichment.tools,
+                "quotes": enrichment.quotes,
+                "tags": enrichment.tags,
+                "suggested_relationships": [
+                    {
+                        "persona_id": rel.persona_id,
+                        "persona_name": rel.persona_name,
+                        "relationship_type": rel.relationship_type,
+                        "shared_context": rel.shared_context,
+                        "interaction_style": rel.interaction_style
+                    }
+                    for rel in (enrichment.suggested_relationships or [])
+                ]
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@personas_bp.route("/api/create", methods=["POST"])
+@login_required
+@requires_persona_service
+def api_create():
+    """AJAX endpoint to create a persona from enriched data"""
+    user_id = session["user"]["id"]
+
+    try:
+        data = request.get_json()
+
+        # Extract data
+        name = data.get("name", "").strip()
+        role = data.get("role", "").strip()
+        company = data.get("company", "").strip()
+        age_stage = data.get("age_stage", "").strip()
+        goals = [g.strip() for g in data.get("goals", []) if g.strip()]
+        pains = [p.strip() for p in data.get("pains", []) if p.strip()]
+        behaviors = data.get("behaviors", "").strip()
+        tools = data.get("tools", "").strip()
+        quotes = [q.strip() for q in data.get("quotes", []) if q.strip()]
+        tags_str = data.get("tags", "")
+        tags = [t.strip() for t in tags_str.split(",") if t.strip()] if isinstance(tags_str, str) else tags_str
+
+        if not name:
+            return jsonify({
+                "success": False,
+                "error": "Persona name is required."
+            }), 400
+
+        # Create PersonaEnrichment
+        enrichment = PersonaEnrichment(
+            name=name,
+            role=role,
+            company=company or None,
+            age_stage=age_stage or None,
+            goals=goals,
+            pains=pains,
+            behaviors=behaviors or None,
+            tools=tools or None,
+            quotes=quotes,
+            tags=tags
+        )
+
+        # Save persona
+        result = g.persona_service.create_persona(user_id, enrichment)
+
+        if result.success:
+            persona_id = result.data.get("id")
+            persona_data = result.data
+
+            return jsonify({
+                "success": True,
+                "data": {
+                    "id": persona_id,
+                    "name": persona_data.get("name"),
+                    "role": persona_data.get("role"),
+                    "company": persona_data.get("company")
+                }
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": result.error
+            }), 500
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@personas_bp.route("/api/<persona_id>", methods=["PUT"])
+@login_required
+@requires_persona_service
+def api_update(persona_id):
+    """AJAX endpoint to update a persona"""
+    user_id = session["user"]["id"]
+
+    try:
+        # Verify ownership
+        persona_result = g.persona_service.get_persona(persona_id)
+        if not persona_result.success:
+            return jsonify({
+                "success": False,
+                "error": "Persona not found"
+            }), 404
+
+        persona = persona_result.data
+        if persona.user_id != user_id:
+            return jsonify({
+                "success": False,
+                "error": "Permission denied"
+            }), 403
+
+        # Extract data
+        data = request.get_json()
+        name = data.get("name", "").strip()
+        role = data.get("role", "").strip()
+        company = data.get("company", "").strip()
+        age_stage = data.get("age_stage", "").strip()
+        goals = [g.strip() for g in data.get("goals", []) if g.strip()]
+        pains = [p.strip() for p in data.get("pains", []) if p.strip()]
+        behaviors = data.get("behaviors", "").strip()
+        tools = data.get("tools", "").strip()
+        quotes = [q.strip() for q in data.get("quotes", []) if q.strip()]
+        tags_str = data.get("tags", "")
+        tags = [t.strip() for t in tags_str.split(",") if t.strip()] if isinstance(tags_str, str) else tags_str
+        notes = data.get("notes", "").strip()
+
+        if not name:
+            return jsonify({
+                "success": False,
+                "error": "Persona name is required."
+            }), 400
+
+        # Update persona
+        updates = {
+            "name": name,
+            "role": role,
+            "company": company or None,
+            "age_stage": age_stage or None,
+            "goals": goals,
+            "pains": pains,
+            "behaviors": behaviors or None,
+            "tools": tools or None,
+            "quotes": quotes,
+            "tags": tags,
+            "notes": notes or None
+        }
+
+        result = g.persona_service.update_persona(persona_id, updates)
+
+        if result.success:
+            return jsonify({
+                "success": True,
+                "data": {
+                    "id": persona_id,
+                    "name": name
+                }
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": result.error
+            }), 500
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 
 # ============================================================================

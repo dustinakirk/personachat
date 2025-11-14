@@ -1,52 +1,69 @@
-{% extends "base.html" %}
+{% extends "chat_base.html" %}
 
-{% block title %}{{ conversation.title or 'Conversation' }} - PersonaChat{% endblock %}
+{% block title %}{{ (conversation or {}).get('title', 'Conversation') }} - PersonaChat{% endblock %}
 
 {% block content %}
 <div class="chat-container">
-    <div class="chat-sidebar">
-        <h2>Participants</h2>
-        <div class="participants-list">
-            {% for participant in participants %}
-            <div class="participant-card {% if not participant.active %}muted{% endif %}" data-persona-id="{{ participant.id }}">
-                <div class="participant-info">
-                    <div class="participant-name">{{ participant.name }}</div>
-                    <div class="participant-role">{{ participant.role or 'No role' }}</div>
-                </div>
-                <button
-                    class="btn-icon"
-                    onclick="toggleParticipant('{{ participant.id }}', {{ 'true' if not participant.active else 'false' }})"
-                    title="{{ 'Unmute' if not participant.active else 'Mute' }}"
-                >
-                    <i class="icon-{{ 'volume-2' if participant.active else 'volume-x' }}"></i>
-                </button>
-            </div>
-            {% endfor %}
-        </div>
-
-        <div class="sidebar-actions">
-            <button class="btn btn-small btn-secondary" onclick="showAddParticipant()">
-                + Add Persona
-            </button>
-        </div>
-
-        <div class="conversation-info">
-            <button class="btn btn-small btn-secondary" onclick="editTitle()">
-                Edit Title
-            </button>
-        </div>
-    </div>
-
     <div class="chat-main">
-        <div class="chat-header">
-            <h1>{{ conversation.title or 'Untitled Conversation' }}</h1>
-            <div class="chat-header-actions">
-                <button class="btn btn-small btn-secondary" onclick="copyTranscript()">
-                    <i class="icon-copy"></i> Copy Transcript
-                </button>
+        <!-- To: Section with Participant Chips and Context Button -->
+        <div class="chat-header-row">
+            <div class="chat-to-section">
+                <span class="chat-to-label">To:</span>
+                <div class="chat-to-participants">
+                {% if participants %}
+                    {% for participant in participants %}
+                    <div class="participant-chip" data-persona-id="{{ participant.id }}">
+                        <div class="participant-chip-content">
+                            <span class="participant-chip-name">{{ participant.name }}</span>
+                            {% if participant.role %}
+                            <span class="participant-chip-role">{{ participant.role }}</span>
+                            {% endif %}
+                        </div>
+                        <button
+                            class="participant-chip-remove"
+                            onclick="removeParticipant('{{ participant.id }}')"
+                            title="Remove from conversation"
+                        >
+                            ×
+                        </button>
+                    </div>
+                    {% endfor %}
+                    <button
+                        id="add-persona-btn"
+                        class="btn-link"
+                        onclick="openPersonaSelectorDrawer()"
+                        style="margin-left: 8px;"
+                    >+ Add</button>
+                {% else %}
+                    <div class="persona-selector" id="persona-selector">
+                        <input
+                            type="text"
+                            id="persona-search-input"
+                            placeholder="Type to search personas..."
+                            autocomplete="off"
+                        />
+                        <div class="persona-selector-dropdown" id="persona-dropdown" style="display: none;"></div>
+                    </div>
+                {% endif %}
+                </div>
             </div>
+
+            {% if conversation %}
+            <button
+                id="add-context-btn"
+                class="btn btn-link context-btn"
+                onclick="openContextDrawer()"
+                title="Add context to help inform persona responses"
+            >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z"/>
+                </svg>
+                Add Context
+            </button>
+            {% endif %}
         </div>
 
+        <!-- Messages Container -->
         <div class="messages-container" id="messages-container">
             {% if messages %}
             {% for message in messages %}
@@ -72,13 +89,14 @@
             {% endif %}
         </div>
 
+        <!-- Chat Input -->
         <div class="chat-input-container">
             <form id="message-form" onsubmit="sendMessage(event)">
                 <textarea
                     id="message-input"
                     name="message"
                     rows="3"
-                    placeholder="Type your message... Use @PersonaName to direct your message to a specific persona."
+                    placeholder="Ask anything"
                     required
                 ></textarea>
                 <div class="input-actions">
@@ -89,288 +107,139 @@
             </form>
             <div id="loading-indicator" style="display: none;">
                 <div class="loading-spinner"></div>
-                <span>Personas are responding...</span>
+                <span id="loading-indicator-text">Routing message...</span>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Add Participant Modal (simple version) -->
-<div id="add-participant-modal" class="modal" style="display: none;">
-    <div class="modal-content">
-        <h3>Add Participant</h3>
-        <select id="new-participant-select" class="form-control">
-            <option value="">Select a persona...</option>
-            {% for persona in all_personas %}
-            {% if persona.id not in participants|map(attribute='id')|list %}
-            <option value="{{ persona.id }}">{{ persona.name }} ({{ persona.role or 'No role' }})</option>
-            {% endif %}
-            {% endfor %}
-        </select>
-        <div class="modal-actions">
-            <button class="btn btn-secondary" onclick="hideAddParticipant()">Cancel</button>
-            <button class="btn btn-primary" onclick="addParticipant()">Add</button>
+<!-- Include Persona Drawer Component -->
+{% include '_persona_drawer.html' %}
+
+<!-- Context Drawer -->
+<div id="context-drawer" class="drawer" style="display: none;">
+    <div class="drawer-overlay" onclick="closeContextDrawer()"></div>
+    <div class="drawer-content">
+        <div class="drawer-header">
+            <h2>Conversation Context</h2>
+            <button class="drawer-close" onclick="closeContextDrawer()">×</button>
+        </div>
+        <div class="drawer-body">
+            <p class="help-text">Add background information to help personas understand the scenario and provide more relevant responses.</p>
+            <form id="context-form" onsubmit="saveContext(event)">
+                <textarea
+                    id="context-textarea"
+                    name="context"
+                    rows="12"
+                    placeholder="Enter context that will inform the personas' responses...
+
+Examples:
+• We're in a quarterly planning meeting
+• The product launch is scheduled for next month
+• There's a budget constraint of $50K
+• The team is working remotely across different time zones"
+                >{{ (conversation or {}).get('context', '') }}</textarea>
+                <div class="drawer-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeContextDrawer()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Context</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
 
-<style>
-.chat-container {
-    display: flex;
-    height: calc(100vh - 80px);
-    gap: 0;
-    margin: 0;
-    max-width: none;
-}
+{% endblock %}
 
-.chat-sidebar {
-    width: 280px;
-    background: var(--panel);
-    border-right: 1px solid var(--border);
-    padding: 1.5rem;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-}
-
-.chat-sidebar h2 {
-    margin: 0 0 1rem 0;
-    font-size: 1.1rem;
-    font-family: var(--font-header);
-}
-
-.participants-list {
-    flex: 1;
-    margin-bottom: 1rem;
-}
-
-.participant-card {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.75rem;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    margin-bottom: 0.5rem;
-}
-
-.participant-card.muted {
-    opacity: 0.5;
-}
-
-.participant-info {
-    flex: 1;
-}
-
-.participant-name {
-    font-weight: 600;
-    font-size: 0.9rem;
-}
-
-.participant-role {
-    font-size: 0.8rem;
-    color: var(--text-dim);
-}
-
-.btn-icon {
-    background: none;
-    border: none;
-    color: var(--text-dim);
-    cursor: pointer;
-    padding: 0.25rem;
-}
-
-.btn-icon:hover {
-    color: var(--accent);
-}
-
-.sidebar-actions,
-.conversation-info {
-    padding-top: 1rem;
-    border-top: 1px solid var(--border);
-    margin-top: 1rem;
-}
-
-.chat-main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg);
-}
-
-.chat-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1.5rem;
-    border-bottom: 1px solid var(--border);
-}
-
-.chat-header h1 {
-    margin: 0;
-    font-size: 1.5rem;
-    font-family: var(--font-header);
-}
-
-.chat-header-actions {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.messages-container {
-    flex: 1;
-    overflow-y: auto;
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
-.message {
-    max-width: 80%;
-    padding: 1rem;
-    border-radius: 8px;
-}
-
-.user-message {
-    align-self: flex-end;
-    background: var(--accent);
-    color: white;
-}
-
-.persona-message {
-    align-self: flex-start;
-    background: var(--panel);
-    border: 1px solid var(--border);
-}
-
-.message-header {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    margin-bottom: 0.5rem;
-    font-size: 0.85rem;
-}
-
-.speaker-name {
-    font-weight: 600;
-}
-
-.speaker-role {
-    color: var(--text-dim);
-}
-
-.user-message .speaker-role,
-.user-message .message-time {
-    color: rgba(255, 255, 255, 0.8);
-}
-
-.message-time {
-    margin-left: auto;
-    color: var(--text-dim);
-}
-
-.message-content {
-    line-height: 1.6;
-}
-
-.empty-messages {
-    text-align: center;
-    padding: 4rem 2rem;
-    color: var(--text-dim);
-}
-
-.chat-input-container {
-    padding: 1.5rem;
-    border-top: 1px solid var(--border);
-    background: var(--panel);
-}
-
-#message-form textarea {
-    width: 100%;
-    padding: 1rem;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text);
-    font-family: inherit;
-    font-size: 1rem;
-    resize: vertical;
-}
-
-#message-form textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-}
-
-.input-actions {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 1rem;
-}
-
-#loading-indicator {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 1rem;
-    background: var(--bg);
-    border-radius: 6px;
-    margin-top: 1rem;
-}
-
-.loading-spinner {
-    width: 20px;
-    height: 20px;
-    border: 2px solid var(--border);
-    border-top: 2px solid var(--accent);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-.modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.7);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-}
-
-.modal-content {
-    background: var(--panel);
-    padding: 2rem;
-    border-radius: 8px;
-    width: 90%;
-    max-width: 400px;
-}
-
-.modal-content h3 {
-    margin: 0 0 1rem 0;
-    font-family: var(--font-header);
-}
-
-.modal-actions {
-    display: flex;
-    gap: 1rem;
-    justify-content: flex-end;
-    margin-top: 1.5rem;
-}
-</style>
-
+{% block scripts %}
 <script>
-const conversationId = "{{ conversation.id }}";
+const conversationId = "{{ (conversation or {}).get('id', '') }}";
+const conversationsIndexUrl = "{{ url_for('conversations.index') }}";
 const currentUser = "{{ session.user.email }}";
 let eventSource = null;
+
+// Set conversation ID for persona drawer
+window.conversationId = conversationId;
+
+// Debug logging for conversation initialization
+console.log('[Chat] Conversation initialized:', {
+  conversationId: conversationId,
+  conversationType: typeof conversationId,
+  isEmpty: conversationId === '',
+  conversationData: {{ conversation | tojson if conversation else '{}' }}
+});
+
+// Initialize existing participants for drawer
+{% if participants %}
+const existingParticipantIds = [
+  {% for participant in participants %}
+  "{{ participant.id }}"{% if not loop.last %},{% endif %}
+  {% endfor %}
+];
+setExistingPersonas(existingParticipantIds);
+{% endif %}
+
+// Initialize persona selector for new conversations
+async function initPersonaSelector() {
+    const selector = document.getElementById('persona-selector');
+    if (!selector) return;
+
+    const input = document.getElementById('persona-search-input');
+    const dropdown = document.getElementById('persona-dropdown');
+
+    // Load all personas
+    try {
+        const response = await fetch('/personas/api/list');
+        const data = await response.json();
+        if (data.success) {
+            allPersonas = data.personas;
+        }
+    } catch (error) {
+        console.error('Error loading personas:', error);
+    }
+
+    // Show dropdown on focus
+    input.addEventListener('focus', () => {
+        showPersonaDropdown('');
+    });
+
+    // Filter on input
+    input.addEventListener('input', (e) => {
+        showPersonaDropdown(e.target.value);
+    });
+
+    // Hide dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!selector.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
+}
+
+function showPersonaDropdown(searchTerm) {
+    const dropdown = document.getElementById('persona-dropdown');
+    const filtered = allPersonas.filter(p =>
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.role && p.role.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+
+    if (filtered.length === 0) {
+        dropdown.innerHTML = '<div class="persona-selector-item">No personas found</div>';
+    } else {
+        dropdown.innerHTML = filtered.map(persona => `
+            <div class="persona-selector-item" onclick="selectPersona('${persona.id}', '${persona.name.replace(/'/g, "\\'")}')">
+                <div class="persona-selector-item-name">${persona.name}</div>
+                ${persona.role ? `<div class="persona-selector-item-role">${persona.role}</div>` : ''}
+            </div>
+        `).join('');
+    }
+
+    dropdown.style.display = 'block';
+}
+
+function selectPersona(personaId, personaName) {
+    // For pending conversations, start a quick chat with this persona
+    window.location.href = `/conversations/quick-start/${personaId}`;
+}
 
 // Helper to add a message to the DOM
 function addMessageToDOM(speakerName, speakerRole, content, isUser = false, personaId = null) {
@@ -443,16 +312,20 @@ async function sendMessage(event) {
     // Clear input immediately for better UX
     input.value = '';
 
-    // Disable send button temporarily
+    // Disable send button and conditionally show loading indicator
     const sendBtn = document.getElementById('send-btn');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const loadingText = document.getElementById('loading-indicator-text');
+
     sendBtn.disabled = true;
-    sendBtn.textContent = 'Sending...';
 
     try {
         const formData = new FormData();
         formData.append('message', message);
 
-        const response = await fetch(`/conversations/${conversationId}/send`, {
+        const endpoint = `/conversations/${conversationId}/send`;
+
+        const response = await fetch(endpoint, {
             method: 'POST',
             body: formData
         });
@@ -460,32 +333,54 @@ async function sendMessage(event) {
         const data = await response.json();
 
         if (data.success) {
-            // Re-enable send button
-            sendBtn.disabled = false;
-            sendBtn.textContent = 'Send Message';
-
             // If there are responders, start SSE stream
             if (data.responders && data.responders.length > 0) {
-                startStreamingResponses(data.message_id, data.responders);
+                // Only show "Routing message..." if AI routing was actually used
+                const needsRoutingStatus = data.routing_method === 'ai_routing';
+
+                if (needsRoutingStatus) {
+                    loadingIndicator.style.display = 'flex';
+                    loadingText.textContent = 'Routing message...';
+                }
+
+                startStreamingResponses(data.message_id, data.responders, conversationId, data.responder_count, needsRoutingStatus);
+            } else {
+                // No responders - re-enable immediately
+                sendBtn.disabled = false;
+                loadingIndicator.style.display = 'none';
             }
         } else {
             alert('Error sending message: ' + data.error);
             sendBtn.disabled = false;
-            sendBtn.textContent = 'Send Message';
+            loadingIndicator.style.display = 'none';
         }
     } catch (error) {
         alert('Error sending message: ' + error.message);
         sendBtn.disabled = false;
-        sendBtn.textContent = 'Send Message';
+        loadingIndicator.style.display = 'none';
     }
 }
 
 // Start SSE stream for persona responses
-function startStreamingResponses(messageId, responders) {
+function startStreamingResponses(messageId, responders, actualConversationId = null, responderCount = null, showRoutingStatus = false) {
     // Close any existing connection
     if (eventSource) {
         eventSource.close();
     }
+
+    // Use the provided conversation ID or fall back to global
+    const convId = actualConversationId || conversationId;
+
+    // Get UI elements
+    const sendBtn = document.getElementById('send-btn');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const loadingText = document.getElementById('loading-indicator-text');
+
+    // Show loading indicator with responder names
+    loadingIndicator.style.display = 'flex';
+    const responderNames = responders.map(r => r.name).join(', ');
+    const responderCountText = responders.length === 1 ? 'is' : 'are';
+    loadingText.textContent = `${responderNames} ${responderCountText} responding...`;
 
     // Add typing indicators for all responders
     const typingElements = {};
@@ -493,14 +388,15 @@ function startStreamingResponses(messageId, responders) {
         typingElements[responder.id] = addTypingIndicator(responder.id, responder.name);
     });
 
-    // Track accumulated responses
+    // Track accumulated responses and completion
     const accumulatedResponses = {};
+    let completedCount = 0;
     responders.forEach(responder => {
         accumulatedResponses[responder.id] = '';
     });
 
     // Open SSE connection
-    eventSource = new EventSource(`/conversations/${conversationId}/stream?message_id=${messageId}`);
+    eventSource = new EventSource(`/conversations/${convId}/stream?message_id=${messageId}`);
 
     eventSource.onmessage = function(event) {
         const data = JSON.parse(event.data);
@@ -514,6 +410,15 @@ function startStreamingResponses(messageId, responders) {
             case 'typing_start':
                 // Typing indicator already shown
                 console.log(`${data.persona_name} is typing...`);
+                // Highlight the typing persona in the loading text
+                if (loadingText) {
+                    loadingText.textContent = `${data.persona_name} is responding...`;
+                }
+                // Highlight the persona chip
+                const typingChip = document.querySelector(`.participant-chip[data-persona-id="${data.persona_id}"]`);
+                if (typingChip) {
+                    typingChip.classList.add('is-responding');
+                }
                 break;
 
             case 'chunk':
@@ -524,7 +429,20 @@ function startStreamingResponses(messageId, responders) {
 
             case 'persona_complete':
                 // Persona finished responding
-                console.log(`${data.persona_name} finished`);
+                completedCount++;
+                console.log(`${data.persona_name} finished (${completedCount}/${responders.length})`);
+
+                // Update persona chip status
+                const completedChip = document.querySelector(`.participant-chip[data-persona-id="${data.persona_id}"]`);
+                if (completedChip) {
+                    completedChip.classList.remove('is-responding');
+                    completedChip.classList.add('has-responded');
+                }
+
+                // Update status with progress
+                if (completedCount < responders.length) {
+                    loadingText.textContent = `${completedCount} of ${responders.length} personas responded...`;
+                }
                 break;
 
             case 'complete':
@@ -532,14 +450,43 @@ function startStreamingResponses(messageId, responders) {
                 console.log('All responses complete');
                 eventSource.close();
                 eventSource = null;
+
+                // Clear all persona chip status classes
+                document.querySelectorAll('.participant-chip').forEach(chip => {
+                    chip.classList.remove('is-responding', 'has-responded');
+                });
+
+                // Re-enable send button and hide loading indicator
+                sendBtn.disabled = false;
+                loadingIndicator.style.display = 'none';
+                break;
+
+            case 'info':
+                // Informational message (e.g., retry notifications)
+                console.log('Info:', data.message);
+                if (loadingText) {
+                    loadingText.textContent = data.message;
+                }
                 break;
 
             case 'error':
                 console.error('Stream error:', data.error || data.message);
-                alert('Error generating response: ' + (data.error || data.message));
-                if (eventSource) {
-                    eventSource.close();
-                    eventSource = null;
+                // Don't show alert for individual persona errors, just log them
+                // The error will be visible in the UI and retries will happen automatically
+                if (data.persona_id) {
+                    console.error(`Error from ${data.persona_name || data.persona_id}: ${data.error || data.message}`);
+                    // Mark this persona attempt as complete so we don't hang
+                    completedCount++;
+                } else {
+                    // Fatal error - show alert
+                    alert('Error generating response: ' + (data.error || data.message));
+                    if (eventSource) {
+                        eventSource.close();
+                        eventSource = null;
+                    }
+                    // Re-enable send button and hide loading indicator on fatal error
+                    sendBtn.disabled = false;
+                    loadingIndicator.style.display = 'none';
                 }
                 break;
         }
@@ -555,16 +502,25 @@ function startStreamingResponses(messageId, responders) {
                 el.remove();
             }
         });
+        // Re-enable send button and hide loading indicator on error
+        sendBtn.disabled = false;
+        loadingIndicator.style.display = 'none';
     };
 }
 
-async function toggleParticipant(personaId, active) {
+async function removeParticipant(personaId) {
+    // Immediately remove chip from DOM for instant feedback
+    const chip = document.querySelector(`.participant-chip[data-persona-id="${personaId}"]`);
+    if (chip) {
+        chip.remove();
+    }
+
+    // Then update database in background
     try {
         const formData = new FormData();
         formData.append('persona_id', personaId);
-        formData.append('active', active);
 
-        const response = await fetch(`/conversations/${conversationId}/participants/toggle`, {
+        const response = await fetch(`/conversations/${conversationId}/participants/remove`, {
             method: 'POST',
             body: formData
         });
@@ -572,98 +528,672 @@ async function toggleParticipant(personaId, active) {
         const data = await response.json();
 
         if (data.success) {
-            window.location.reload();
+            // Update drawer state so persona becomes available again
+            existingPersonaIds.delete(personaId);
+
+            // Re-render drawer list if it's open and personas are loaded
+            if (allPersonas.length > 0) {
+                renderPersonaList(allPersonas);
+            }
         } else {
-            alert('Error toggling participant: ' + data.error);
+            // Only reload on error to restore the correct state
+            alert('Error removing participant: ' + data.error);
+            window.location.reload();
         }
     } catch (error) {
         alert('Error: ' + error.message);
+        window.location.reload(); // Reload on error to restore state
     }
 }
 
-function showAddParticipant() {
-    document.getElementById('add-participant-modal').style.display = 'flex';
+// Old modal functions removed - now using persona drawer component
+// (showAddParticipant, hideAddParticipant, addParticipant)
+
+// Navigation functions (called from nav partials)
+function startNewConversation() {
+    window.location.href = '/conversations/new';
 }
 
-function hideAddParticipant() {
-    document.getElementById('add-participant-modal').style.display = 'none';
+function showAllConversations(event) {
+    event.preventDefault();
+    // TODO: Implement modal for all conversations
+    alert('Show all conversations modal (to be implemented)');
 }
 
-async function addParticipant() {
-    const select = document.getElementById('new-participant-select');
-    const personaId = select.value;
+function showAllPersonas(event) {
+    event.preventDefault();
+    // TODO: Implement modal for all personas
+    window.location.href = '/personas';
+}
 
-    if (!personaId) {
-        alert('Please select a persona');
+function showAddPersona(event) {
+    if (event) event.preventDefault();
+    // Open the drawer
+    const drawer = document.getElementById('personaDrawer');
+    drawer.classList.add('active');
+
+    // Clear edit mode
+    drawer.dataset.editMode = 'false';
+    drawer.dataset.editPersonaId = '';
+    document.getElementById('drawerTitle').textContent = 'Create New Persona';
+
+    // Reset form state
+    resetDrawerForms();
+
+    // Focus on description textarea
+    setTimeout(() => {
+        document.getElementById('drawer-description').focus();
+    }, 100);
+}
+
+function closePersonaDrawer() {
+    const drawer = document.getElementById('personaDrawer');
+    drawer.classList.remove('active');
+    resetDrawerForms();
+}
+
+function resetDrawerForms() {
+    // Clear edit mode
+    const drawer = document.getElementById('personaDrawer');
+    drawer.dataset.editMode = 'false';
+    drawer.dataset.editPersonaId = '';
+    document.getElementById('drawerTitle').textContent = 'Create New Persona';
+
+    // Reset to step 1
+    document.getElementById('drawerStep1').style.display = 'block';
+    document.getElementById('drawerStep2').style.display = 'none';
+
+    // Clear all form fields
+    document.getElementById('personaDescriptionForm').reset();
+    document.getElementById('personaEnrichmentForm').reset();
+
+    // Clear errors
+    document.getElementById('step1Error').style.display = 'none';
+    document.getElementById('step2Error').style.display = 'none';
+
+    // Reset quote fields to single input
+    const quotesContainer = document.getElementById('drawer-quotes-container');
+    quotesContainer.innerHTML = '<input type="text" name="quotes[]" class="form-control drawer-mb" placeholder="A phrase that captures their mindset">';
+}
+
+function backToStep1() {
+    document.getElementById('drawerStep1').style.display = 'block';
+    document.getElementById('drawerStep2').style.display = 'none';
+}
+
+function addDrawerQuote() {
+    const container = document.getElementById('drawer-quotes-container');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'quotes[]';
+    input.className = 'form-control drawer-mb';
+    input.placeholder = 'Another typical phrase';
+    container.appendChild(input);
+}
+
+// Handle step 1: Generate enrichment
+document.getElementById('personaDescriptionForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const btn = document.getElementById('generateEnrichmentBtn');
+    const spinner = btn.querySelector('.btn-spinner');
+    const description = document.getElementById('drawer-description').value.trim();
+    const errorEl = document.getElementById('step1Error');
+
+    if (!description) {
+        errorEl.textContent = 'Please provide a persona description.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    // Show loading state
+    btn.disabled = true;
+    spinner.style.display = 'inline-block';
+    errorEl.style.display = 'none';
+
+    try {
+        const response = await fetch('/personas/api/enrich', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ description })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            // Populate step 2 form
+            populateEnrichmentForm(result.data);
+
+            // Show step 2
+            document.getElementById('drawerStep1').style.display = 'none';
+            document.getElementById('drawerStep2').style.display = 'block';
+        } else {
+            errorEl.textContent = result.error || 'Failed to generate persona profile.';
+            errorEl.style.display = 'block';
+        }
+    } catch (error) {
+        errorEl.textContent = 'Network error: ' + error.message;
+        errorEl.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        spinner.style.display = 'none';
+    }
+});
+
+// Handle step 2: Save persona
+document.getElementById('personaEnrichmentForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const btn = document.getElementById('savePersonaBtn');
+    const spinner = btn.querySelector('.btn-spinner');
+    const errorEl = document.getElementById('step2Error');
+
+    // Collect form data
+    const formData = new FormData(this);
+    const data = {
+        name: formData.get('name'),
+        role: formData.get('role'),
+        company: formData.get('company'),
+        age_stage: formData.get('age_stage'),
+        goals: formData.getAll('goals[]').filter(g => g.trim()),
+        pains: formData.getAll('pains[]').filter(p => p.trim()),
+        behaviors: formData.get('behaviors'),
+        tools: formData.get('tools'),
+        quotes: formData.getAll('quotes[]').filter(q => q.trim()),
+        tags: formData.get('tags')
+    };
+
+    if (!data.name) {
+        errorEl.textContent = 'Persona name is required.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    // Show loading state
+    btn.disabled = true;
+    spinner.style.display = 'inline-block';
+    errorEl.style.display = 'none';
+
+    try {
+        // Check if in edit mode
+        const drawer = document.getElementById('personaDrawer');
+        const isEditMode = drawer.dataset.editMode === 'true';
+        const personaId = drawer.dataset.editPersonaId;
+
+        let response;
+        if (isEditMode && personaId) {
+            // Update existing persona
+            response = await fetch(`/personas/api/${personaId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+        } else {
+            // Create new persona
+            response = await fetch('/personas/api/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+        }
+
+        const result = await response.json();
+
+        if (result.success) {
+            // Close drawer
+            closePersonaDrawer();
+
+            // Show success toast
+            const action = isEditMode ? 'updated' : 'created';
+            showToast('success', `Persona "${result.data.name}" ${action} successfully!`);
+
+            // Update personas nav list
+            refreshPersonasNav();
+
+            // If creating and in a conversation, optionally add to it
+            {% if conversation and conversation.get('id') %}
+            if (!isEditMode && confirm(`Add ${result.data.name} to this conversation?`)) {
+                await addParticipantById('{{ conversation.get('id', '') }}', result.data.id);
+            }
+            {% endif %}
+        } else {
+            errorEl.textContent = result.error || 'Failed to save persona.';
+            errorEl.style.display = 'block';
+        }
+    } catch (error) {
+        errorEl.textContent = 'Network error: ' + error.message;
+        errorEl.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        spinner.style.display = 'none';
+    }
+});
+
+function populateEnrichmentForm(enrichment) {
+    document.getElementById('drawer-name').value = enrichment.name || '';
+    document.getElementById('drawer-role').value = enrichment.role || '';
+    document.getElementById('drawer-company').value = enrichment.company || '';
+    document.getElementById('drawer-age-stage').value = enrichment.age_stage || '';
+    document.getElementById('drawer-behaviors').value = enrichment.behaviors || '';
+    document.getElementById('drawer-tools').value = enrichment.tools || '';
+    document.getElementById('drawer-tags').value = (enrichment.tags || []).join(', ');
+
+    // Populate goals
+    const goalsInputs = document.querySelectorAll('#drawer-goals-container input');
+    (enrichment.goals || []).forEach((goal, i) => {
+        if (goalsInputs[i]) goalsInputs[i].value = goal;
+    });
+
+    // Populate pains
+    const painsInputs = document.querySelectorAll('#drawer-pains-container input');
+    (enrichment.pains || []).forEach((pain, i) => {
+        if (painsInputs[i]) painsInputs[i].value = pain;
+    });
+
+    // Populate quotes
+    const quotesContainer = document.getElementById('drawer-quotes-container');
+    quotesContainer.innerHTML = '';
+    const quotes = enrichment.quotes || [];
+    if (quotes.length === 0) {
+        quotesContainer.innerHTML = '<input type="text" name="quotes[]" class="form-control drawer-mb" placeholder="A phrase that captures their mindset">';
+    } else {
+        quotes.forEach(quote => {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.name = 'quotes[]';
+            input.className = 'form-control drawer-mb';
+            input.value = quote;
+            quotesContainer.appendChild(input);
+        });
+    }
+}
+
+function showToast(type, message) {
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `
+        <div class="toast-content">
+            <span class="toast-icon">${type === 'success' ? '✓' : '✗'}</span>
+            <span class="toast-message">${message}</span>
+            <button class="toast-close" onclick="this.parentElement.parentElement.remove()">×</button>
+        </div>
+    `;
+    document.body.appendChild(toast);
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.remove();
+        }
+    }, 5000);
+}
+
+async function refreshPersonasNav() {
+    try {
+        const response = await fetch('/personas/api/list');
+        const result = await response.json();
+
+        if (result.success && result.personas.length > 0) {
+            // Get first 5 personas
+            const recentPersonas = result.personas.slice(0, 5);
+            const navList = document.getElementById('recent-personas');
+
+            // Rebuild nav list (simplified - full implementation would match _nav_personas.html)
+            let html = '';
+            recentPersonas.forEach(persona => {
+                html += `
+                    <a href="/conversations/quick-start/${persona.id}" class="nav-item">
+                        <div class="nav-item-title">${persona.name}</div>
+                        <div class="nav-item-subtitle">${persona.role || 'Persona'}</div>
+                    </a>
+                `;
+            });
+
+            if (result.personas.length > 5) {
+                html += '<a href="/personas" class="nav-item-more">more...</a>';
+            }
+
+            html += `
+                <div class="nav-section-action">
+                    <button class="btn-link" onclick="showAddPersona(event)">+ Add Persona</button>
+                </div>
+            `;
+
+            navList.innerHTML = html;
+        }
+    } catch (error) {
+        console.error('Failed to refresh personas nav:', error);
+    }
+}
+
+async function addParticipantById(conversationId, personaId) {
+    try {
+        const response = await fetch(`/conversations/${conversationId}/participants/add`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: `persona_id=${personaId}`
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            window.location.reload();
+        } else {
+            showToast('error', 'Failed to add participant: ' + result.error);
+        }
+    } catch (error) {
+        showToast('error', 'Network error: ' + error.message);
+    }
+}
+
+// Persona nav action menu functions
+let currentOpenMenuId = null;
+
+function togglePersonaMenu(event, personaId) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const menuId = `persona-menu-${personaId}`;
+    const menu = document.getElementById(menuId);
+
+    // Close previously open menu if different
+    if (currentOpenMenuId && currentOpenMenuId !== menuId) {
+        const prevMenu = document.getElementById(currentOpenMenuId);
+        if (prevMenu) prevMenu.style.display = 'none';
+    }
+
+    // Toggle current menu
+    if (menu.style.display === 'none' || !menu.style.display) {
+        menu.style.display = 'block';
+        currentOpenMenuId = menuId;
+    } else {
+        menu.style.display = 'none';
+        currentOpenMenuId = null;
+    }
+}
+
+// Close menus when clicking outside
+document.addEventListener('click', function(event) {
+    if (currentOpenMenuId && !event.target.closest('.nav-item-wrapper')) {
+        const menu = document.getElementById(currentOpenMenuId);
+        if (menu) menu.style.display = 'none';
+        currentOpenMenuId = null;
+    }
+});
+
+async function editPersonaFromNav(event, personaId) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Close menu
+    if (currentOpenMenuId) {
+        const menu = document.getElementById(currentOpenMenuId);
+        if (menu) menu.style.display = 'none';
+        currentOpenMenuId = null;
+    }
+
+    try {
+        // Fetch persona data
+        const response = await fetch(`/personas/api/${personaId}`);
+        const result = await response.json();
+
+        if (result.success) {
+            const persona = result.persona;
+
+            // Open drawer
+            const drawer = document.getElementById('personaDrawer');
+            drawer.classList.add('active');
+
+            // Set to edit mode
+            drawer.dataset.editMode = 'true';
+            drawer.dataset.editPersonaId = personaId;
+
+            // Update title
+            document.getElementById('drawerTitle').textContent = 'Edit Persona';
+
+            // Skip step 1, show step 2 directly
+            document.getElementById('drawerStep1').style.display = 'none';
+            document.getElementById('drawerStep2').style.display = 'block';
+
+            // Populate form with persona data
+            document.getElementById('drawer-name').value = persona.name || '';
+            document.getElementById('drawer-role').value = persona.role || '';
+            document.getElementById('drawer-company').value = persona.company || '';
+            document.getElementById('drawer-age-stage').value = persona.age_stage || '';
+            document.getElementById('drawer-behaviors').value = persona.behaviors || '';
+            document.getElementById('drawer-tools').value = persona.tools || '';
+
+            // Populate goals (ensure at least 3 inputs)
+            const goalsContainer = document.getElementById('drawer-goals-container');
+            goalsContainer.innerHTML = '';
+            const goals = persona.goals || [];
+            for (let i = 0; i < Math.max(3, goals.length); i++) {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.name = 'goals[]';
+                input.className = 'form-control drawer-mb';
+                input.placeholder = `Goal ${i + 1}`;
+                input.value = goals[i] || '';
+                goalsContainer.appendChild(input);
+            }
+
+            // Populate pains (ensure at least 3 inputs)
+            const painsContainer = document.getElementById('drawer-pains-container');
+            painsContainer.innerHTML = '';
+            const pains = persona.pains || [];
+            for (let i = 0; i < Math.max(3, pains.length); i++) {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.name = 'pains[]';
+                input.className = 'form-control drawer-mb';
+                input.placeholder = `Pain point ${i + 1}`;
+                input.value = pains[i] || '';
+                painsContainer.appendChild(input);
+            }
+
+            // Populate quotes (ensure at least 1 input)
+            const quotesContainer = document.getElementById('drawer-quotes-container');
+            quotesContainer.innerHTML = '';
+            const quotes = persona.quotes || [];
+            const quoteCount = Math.max(1, quotes.length);
+            for (let i = 0; i < quoteCount; i++) {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.name = 'quotes[]';
+                input.className = 'form-control drawer-mb';
+                input.placeholder = i === 0 ? 'A phrase that captures their mindset' : 'Another typical phrase';
+                input.value = quotes[i] || '';
+                quotesContainer.appendChild(input);
+            }
+
+            // Populate tags (convert array to comma-separated string)
+            const tags = persona.tags || [];
+            document.getElementById('drawer-tags').value = tags.join(', ');
+
+        } else {
+            showToast('error', 'Failed to load persona: ' + result.error);
+        }
+    } catch (error) {
+        showToast('error', 'Network error: ' + error.message);
+    }
+}
+
+async function deletePersonaFromNav(event, personaId, personaName) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Close menu
+    if (currentOpenMenuId) {
+        const menu = document.getElementById(currentOpenMenuId);
+        if (menu) menu.style.display = 'none';
+        currentOpenMenuId = null;
+    }
+
+    // Confirm deletion
+    const safePersonaName = personaName || 'this persona';
+    const confirmed = confirm(`Are you sure you want to delete "${safePersonaName}"? This action cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch(`/personas/${personaId}/delete`, {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showToast('success', 'Persona deleted successfully');
+            // Refresh the personas nav list
+            await refreshPersonasNav();
+        } else {
+            showToast('error', 'Failed to delete persona: ' + result.error);
+        }
+    } catch (error) {
+        showToast('error', 'Network error: ' + error.message);
+    }
+}
+
+function toggleConversationMenu(event, conversationId) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const menuId = `conversation-menu-${conversationId}`;
+    const menu = document.getElementById(menuId);
+    if (!menu) {
+        return;
+    }
+
+    if (currentOpenMenuId && currentOpenMenuId !== menuId) {
+        const prevMenu = document.getElementById(currentOpenMenuId);
+        if (prevMenu) prevMenu.style.display = 'none';
+    }
+
+    if (menu.style.display === 'none' || !menu.style.display) {
+        menu.style.display = 'block';
+        currentOpenMenuId = menuId;
+    } else {
+        menu.style.display = 'none';
+        currentOpenMenuId = null;
+    }
+}
+
+async function deleteConversationFromNav(event, conversationIdToDelete, conversationTitle) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (currentOpenMenuId) {
+        const menu = document.getElementById(currentOpenMenuId);
+        if (menu) menu.style.display = 'none';
+        currentOpenMenuId = null;
+    }
+
+    const safeTitle = conversationTitle || 'this conversation';
+    if (!confirm(`Delete "${safeTitle}"? This action cannot be undone.`)) {
         return;
     }
 
     try {
-        const formData = new FormData();
-        formData.append('persona_id', personaId);
-
-        const response = await fetch(`/conversations/${conversationId}/participants/add`, {
-            method: 'POST',
-            body: formData
+        const response = await fetch(`/conversations/${conversationIdToDelete}/delete`, {
+            method: 'POST'
         });
+        const result = await response.json();
 
-        const data = await response.json();
+        if (result.success) {
+            showToast('success', 'Conversation deleted successfully');
 
-        if (data.success) {
-            window.location.reload();
+            const navList = document.getElementById('recent-conversations');
+            const wrapper = navList ? navList.querySelector(`.nav-item-wrapper[data-conversation-id="${conversationIdToDelete}"]`) : null;
+            if (wrapper) {
+                wrapper.remove();
+                if (navList.querySelectorAll('.nav-item-wrapper').length === 0) {
+                    navList.innerHTML = '<div class="nav-empty">No conversations yet</div>';
+                }
+            }
+
+            if (conversationId && conversationId === conversationIdToDelete) {
+                window.location.href = conversationsIndexUrl;
+            }
         } else {
-            alert('Error adding participant: ' + data.error);
+            showToast('error', 'Failed to delete conversation: ' + (result.error || 'Unknown error'));
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showToast('error', 'Network error: ' + error.message);
     }
 }
 
-async function editTitle() {
-    const newTitle = prompt('Enter new conversation title:', '{{ conversation.title or "" }}');
+// ============================================================================
+// CONTEXT DRAWER FUNCTIONS
+// ============================================================================
 
-    if (!newTitle) return;
+function openContextDrawer() {
+    const drawer = document.getElementById('context-drawer');
+    if (!drawer) return;
+
+    drawer.style.display = 'block';
+    // Small delay to trigger CSS transition
+    setTimeout(() => {
+        drawer.classList.add('active');
+    }, 10);
+}
+
+function closeContextDrawer() {
+    const drawer = document.getElementById('context-drawer');
+    if (!drawer) return;
+
+    drawer.classList.remove('active');
+    // Wait for transition to complete before hiding
+    setTimeout(() => {
+        drawer.style.display = 'none';
+    }, 300);
+}
+
+async function saveContext(event) {
+    event.preventDefault();
+
+    if (!conversationId || conversationId === '') {
+        showToast('error', 'No active conversation to save context for');
+        return;
+    }
+
+    const form = event.target;
+    const formData = new FormData(form);
 
     try {
-        const formData = new FormData();
-        formData.append('title', newTitle);
-
-        const response = await fetch(`/conversations/${conversationId}/title`, {
+        const response = await fetch(`/conversations/${conversationId}/context`, {
             method: 'POST',
             body: formData
         });
 
-        const data = await response.json();
+        const result = await response.json();
 
-        if (data.success) {
-            window.location.reload();
+        if (result.success) {
+            showToast('success', 'Context saved successfully');
+            closeContextDrawer();
         } else {
-            alert('Error updating title: ' + data.error);
+            showToast('error', 'Failed to save context: ' + (result.error || 'Unknown error'));
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showToast('error', 'Network error: ' + error.message);
     }
 }
 
-function copyTranscript() {
-    const messages = document.querySelectorAll('.message');
-    let transcript = '';
-
-    messages.forEach(msg => {
-        const speaker = msg.querySelector('.speaker-name').textContent;
-        const content = msg.querySelector('.message-content').textContent;
-        transcript += `${speaker}: ${content}\n\n`;
-    });
-
-    navigator.clipboard.writeText(transcript).then(() => {
-        alert('Transcript copied to clipboard!');
-    });
-}
-
-// Auto-scroll to bottom on load
+// Initialize on load
 window.addEventListener('load', () => {
     const container = document.getElementById('messages-container');
     container.scrollTop = container.scrollHeight;
+
+    // Initialize persona selector if on pending conversation
+    if (conversationId === 'pending') {
+        initPersonaSelector();
+    }
 });
 </script>
 {% endblock %}

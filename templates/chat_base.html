@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}PersonaChat{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+  </head>
+  <body class="chat-app">
+    <div class="chat-layout">
+      <!-- Left Navigation Sidebar -->
+      <aside class="chat-nav">
+        <div class="chat-nav-header">
+          <a class="brand" href="{{ url_for('conversations.index') }}">PersonaChat</a>
+        </div>
+
+        <div class="chat-nav-content">
+          <!-- New Conversation Button -->
+          <div class="nav-section">
+            <button class="btn btn-new-conversation" onclick="startNewConversation()">
+              <span class="btn-icon">+</span> New Conversation
+            </button>
+          </div>
+
+          <!-- Recent Conversations Section -->
+          <div class="nav-section">
+            <div class="nav-section-header">
+              <h3>Conversations</h3>
+            </div>
+            <div class="nav-list" id="recent-conversations">
+              {% include '_nav_conversations.html' %}
+            </div>
+          </div>
+
+          <!-- Recent Personas Section -->
+          <div class="nav-section">
+            <div class="nav-section-header">
+              <h3>Personas</h3>
+            </div>
+            <div class="nav-list" id="recent-personas">
+              {% include '_nav_personas.html' %}
+            </div>
+          </div>
+        </div>
+
+        <!-- User Info & Logout at Bottom -->
+        <div class="chat-nav-footer">
+          <div class="nav-user-info">
+            <span class="nav-user-email">{{ user.email }}</span>
+          </div>
+          <a href="{{ url_for('main.logout') }}" class="nav-logout">Logout</a>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="chat-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flash-wrapper-overlay">
+              {% for category, message in messages %}
+                <div class="flash flash-{{ category }}">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+
+    <!-- Right-Side Drawer for Persona Creation -->
+    <div id="personaDrawer" class="persona-drawer">
+      <div class="drawer-overlay" onclick="closePersonaDrawer()"></div>
+      <div class="drawer-content">
+        <div class="drawer-header">
+          <h2 id="drawerTitle">Create New Persona</h2>
+          <button class="drawer-close" onclick="closePersonaDrawer()">&times;</button>
+        </div>
+
+        <div class="drawer-body">
+          <!-- Step 1: Description -->
+          <div id="drawerStep1" class="drawer-step">
+            <p class="drawer-help-text">
+              Describe your persona in your own words - their role, goals, challenges, or any other details.
+              Our AI will create a structured profile that you can edit.
+            </p>
+            <form id="personaDescriptionForm">
+              <div class="form-group">
+                <label for="drawer-description">Persona Description:</label>
+                <textarea
+                  id="drawer-description"
+                  name="description"
+                  rows="8"
+                  class="form-control"
+                  placeholder="Example: Sarah Chen is a product manager at a SaaS startup. She's responsible for prioritizing features and struggles with competing stakeholder demands. She uses Jira and Figma daily."
+                  required
+                ></textarea>
+              </div>
+              <div class="drawer-error" id="step1Error" style="display: none;"></div>
+              <div class="drawer-actions">
+                <button type="button" class="btn btn-secondary" onclick="closePersonaDrawer()">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="generateEnrichmentBtn">
+                  <span class="btn-spinner" style="display:none;"></span>
+                  <span>Generate Profile</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Step 2: Edit Enrichment -->
+          <div id="drawerStep2" class="drawer-step" style="display: none;">
+            <p class="drawer-help-text">
+              Review and edit the AI-generated profile before saving.
+            </p>
+            <form id="personaEnrichmentForm">
+              <div class="form-group">
+                <label for="drawer-name">Name: *</label>
+                <input type="text" id="drawer-name" name="name" class="form-control" required>
+              </div>
+
+              <div class="form-group">
+                <label for="drawer-role">Role/Title:</label>
+                <input type="text" id="drawer-role" name="role" class="form-control">
+              </div>
+
+              <div class="form-group">
+                <label for="drawer-company">Company/Context:</label>
+                <input type="text" id="drawer-company" name="company" class="form-control">
+              </div>
+
+              <div class="form-group">
+                <label for="drawer-age-stage">Age/Stage:</label>
+                <input type="text" id="drawer-age-stage" name="age_stage" class="form-control" placeholder="e.g., '30s', 'early career'">
+              </div>
+
+              <div class="form-group">
+                <label>Goals:</label>
+                <div id="drawer-goals-container">
+                  <input type="text" name="goals[]" class="form-control drawer-mb" placeholder="Goal 1">
+                  <input type="text" name="goals[]" class="form-control drawer-mb" placeholder="Goal 2">
+                  <input type="text" name="goals[]" class="form-control drawer-mb" placeholder="Goal 3">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Pain Points:</label>
+                <div id="drawer-pains-container">
+                  <input type="text" name="pains[]" class="form-control drawer-mb" placeholder="Pain point 1">
+                  <input type="text" name="pains[]" class="form-control drawer-mb" placeholder="Pain point 2">
+                  <input type="text" name="pains[]" class="form-control drawer-mb" placeholder="Pain point 3">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="drawer-behaviors">Behaviors & Traits:</label>
+                <textarea id="drawer-behaviors" name="behaviors" rows="3" class="form-control"></textarea>
+              </div>
+
+              <div class="form-group">
+                <label for="drawer-tools">Tools & Systems:</label>
+                <input type="text" id="drawer-tools" name="tools" class="form-control" placeholder="e.g., Jira, Figma, Slack">
+              </div>
+
+              <div class="form-group">
+                <label>Typical Quotes:</label>
+                <div id="drawer-quotes-container">
+                  <input type="text" name="quotes[]" class="form-control drawer-mb" placeholder="A phrase that captures their mindset">
+                </div>
+                <button type="button" class="btn-link" onclick="addDrawerQuote()">+ Add Another Quote</button>
+              </div>
+
+              <div class="form-group">
+                <label for="drawer-tags">Tags (comma-separated):</label>
+                <input type="text" id="drawer-tags" name="tags" class="form-control" placeholder="e.g., product, startup, technical">
+              </div>
+
+              <div class="drawer-error" id="step2Error" style="display: none;"></div>
+              <div class="drawer-actions">
+                <button type="button" class="btn btn-secondary" onclick="backToStep1()">Back</button>
+                <button type="submit" class="btn btn-primary" id="savePersonaBtn">
+                  <span class="btn-spinner" style="display:none;"></span>
+                  <span>Save Persona</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% block scripts %}{% endblock %}
+  </body>
+</html>
