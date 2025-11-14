@@ -114,6 +114,55 @@
               Review and edit the AI-generated profile before saving.
             </p>
             <form id="personaEnrichmentForm">
+              <!-- Avatar Settings -->
+              <div class="avatar-settings">
+                <div class="color-picker-group">
+                  <label>Avatar Color:</label>
+                  <div class="color-picker-wrapper">
+                    <button type="button" class="color-picker-button" id="drawerColorPickerButton" onclick="toggleDrawerColorPicker()">
+                      <div class="color-swatch-preview" id="drawerColorPreview" style="background-color: #28A2AB"></div>
+                      <span id="drawerColorLabel">Teal</span>
+                      <svg class="color-picker-caret" viewBox="0 0 12 12" fill="currentColor">
+                        <path d="M6 8L2 4h8z"/>
+                      </svg>
+                    </button>
+                    <input type="hidden" name="avatar_color" id="drawer-avatar-color" value="#28A2AB">
+
+                    <div class="color-picker-dropdown" id="drawerColorPickerDropdown">
+                      <div class="color-swatches-grid">
+                        <div class="color-swatch" style="background-color: #28A2AB" data-color="#28A2AB" data-name="Teal" onclick="selectDrawerColor('#28A2AB', 'Teal')"></div>
+                        <div class="color-swatch" style="background-color: #63A0DC" data-color="#63A0DC" data-name="Blue" onclick="selectDrawerColor('#63A0DC', 'Blue')"></div>
+                        <div class="color-swatch" style="background-color: #5C74AD" data-color="#5C74AD" data-name="Purple" onclick="selectDrawerColor('#5C74AD', 'Purple')"></div>
+                        <div class="color-swatch" style="background-color: #E56996" data-color="#E56996" data-name="Raspberry" onclick="selectDrawerColor('#E56996', 'Raspberry')"></div>
+
+                        <div class="color-swatch" style="background-color: #FC7272" data-color="#FC7272" data-name="Pink" onclick="selectDrawerColor('#FC7272', 'Pink')"></div>
+                        <div class="color-swatch" style="background-color: #FC9A65" data-color="#FC9A65" data-name="Peach" onclick="selectDrawerColor('#FC9A65', 'Peach')"></div>
+                        <div class="color-swatch" style="background-color: #F39A41" data-color="#F39A41" data-name="Orange" onclick="selectDrawerColor('#F39A41', 'Orange')"></div>
+                        <div class="color-swatch" style="background-color: #F3B441" data-color="#F3B441" data-name="Yellow" onclick="selectDrawerColor('#F3B441', 'Yellow')"></div>
+
+                        <div class="color-swatch" style="background-color: #28AB7D" data-color="#28AB7D" data-name="Green" onclick="selectDrawerColor('#28AB7D', 'Green')"></div>
+                        <div class="color-swatch" style="background-color: #28AB94" data-color="#28AB94" data-name="Mint" onclick="selectDrawerColor('#28AB94', 'Mint')"></div>
+                        <div class="color-swatch" style="background-color: #5C87AD" data-color="#5C87AD" data-name="Slate" onclick="selectDrawerColor('#5C87AD', 'Slate')"></div>
+                        <div class="color-swatch" style="background-color: #FF6B6B" data-color="#FF6B6B" data-name="Coral" onclick="selectDrawerColor('#FF6B6B', 'Coral')"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="emoji-picker-group">
+                  <label for="drawer-avatar-emoji">Avatar Emoji:</label>
+                  <input
+                    type="text"
+                    name="avatar_emoji"
+                    id="drawer-avatar-emoji"
+                    class="emoji-input"
+                    placeholder="😀"
+                    maxlength="2"
+                  >
+                  <small class="help-text">Choose an emoji</small>
+                </div>
+              </div>
+
               <div class="form-group">
                 <label for="drawer-name">Name: *</label>
                 <input type="text" id="drawer-name" name="name" class="form-control" required>

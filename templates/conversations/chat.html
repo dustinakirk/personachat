@@ -772,6 +772,41 @@ function resetDrawerForms() {
     // Reset quote fields to single input
     const quotesContainer = document.getElementById('drawer-quotes-container');
     quotesContainer.innerHTML = '<input type="text" name="quotes[]" class="form-control drawer-mb" placeholder="A phrase that captures their mindset">';
+
+    // Reset color picker to default
+    document.getElementById('drawer-avatar-color').value = '#28A2AB';
+    document.getElementById('drawerColorPreview').style.backgroundColor = '#28A2AB';
+    document.getElementById('drawerColorLabel').textContent = 'Teal';
+}
+
+// Drawer Color Picker Functions
+function toggleDrawerColorPicker() {
+    const dropdown = document.getElementById('drawerColorPickerDropdown');
+    const button = document.getElementById('drawerColorPickerButton');
+
+    dropdown.classList.toggle('open');
+    button.classList.toggle('open');
+}
+
+function selectDrawerColor(color, name) {
+    // Update hidden input
+    document.getElementById('drawer-avatar-color').value = color;
+
+    // Update preview swatch
+    document.getElementById('drawerColorPreview').style.backgroundColor = color;
+
+    // Update label
+    document.getElementById('drawerColorLabel').textContent = name;
+
+    // Update selected state
+    const dropdown = document.getElementById('drawerColorPickerDropdown');
+    dropdown.querySelectorAll('.color-swatch').forEach(swatch => {
+        swatch.classList.remove('selected');
+    });
+    event.target.classList.add('selected');
+
+    // Close dropdown
+    toggleDrawerColorPicker();
 }
 
 function backToStep1() {
@@ -860,7 +895,9 @@ document.getElementById('personaEnrichmentForm').addEventListener('submit', asyn
         behaviors: formData.get('behaviors'),
         tools: formData.get('tools'),
         quotes: formData.getAll('quotes[]').filter(q => q.trim()),
-        tags: formData.get('tags')
+        tags: formData.get('tags'),
+        avatar_emoji: formData.get('avatar_emoji'),
+        avatar_color: formData.get('avatar_color')
     };
 
     if (!data.name) {
@@ -1085,6 +1122,16 @@ document.addEventListener('click', function(event) {
         if (menu) menu.style.display = 'none';
         currentOpenMenuId = null;
     }
+
+    // Close drawer color picker when clicking outside
+    const drawerPicker = document.querySelector('#personaDrawer .color-picker-wrapper');
+    const drawerDropdown = document.getElementById('drawerColorPickerDropdown');
+    const drawerButton = document.getElementById('drawerColorPickerButton');
+
+    if (drawerPicker && !drawerPicker.contains(event.target) && drawerDropdown && drawerDropdown.classList.contains('open')) {
+        drawerDropdown.classList.remove('open');
+        drawerButton.classList.remove('open');
+    }
 });
 
 async function editPersonaFromNav(event, personaId) {
@@ -1175,6 +1222,31 @@ async function editPersonaFromNav(event, personaId) {
             // Populate tags (convert array to comma-separated string)
             const tags = persona.tags || [];
             document.getElementById('drawer-tags').value = tags.join(', ');
+
+            // Populate avatar fields
+            document.getElementById('drawer-avatar-emoji').value = persona.avatar_emoji || '';
+
+            const avatarColor = persona.avatar_color || '#28A2AB';
+            document.getElementById('drawer-avatar-color').value = avatarColor;
+            document.getElementById('drawerColorPreview').style.backgroundColor = avatarColor;
+
+            // Set color name based on color value
+            const colorNames = {
+                '#28A2AB': 'Teal', '#63A0DC': 'Blue', '#5C74AD': 'Purple', '#E56996': 'Raspberry',
+                '#FC7272': 'Pink', '#FC9A65': 'Peach', '#F39A41': 'Orange', '#F3B441': 'Yellow',
+                '#28AB7D': 'Green', '#28AB94': 'Mint', '#5C87AD': 'Slate', '#FF6B6B': 'Coral'
+            };
+            document.getElementById('drawerColorLabel').textContent = colorNames[avatarColor] || 'Teal';
+
+            // Mark selected color swatch
+            const dropdown = document.getElementById('drawerColorPickerDropdown');
+            dropdown.querySelectorAll('.color-swatch').forEach(swatch => {
+                if (swatch.dataset.color === avatarColor) {
+                    swatch.classList.add('selected');
+                } else {
+                    swatch.classList.remove('selected');
+                }
+            });
 
         } else {
             showToast('error', 'Failed to load persona: ' + result.error);
