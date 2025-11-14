@@ -380,10 +380,8 @@ Description: {description}
 
 Your tasks:
 1. Create a detailed persona profile based on the description
-2. If EXISTING PERSONAS are provided, analyze if this new persona has meaningful relationships with any of them:
-   - Consider location, industry, role connections, collaboration potential
-   - Only suggest relationships that make sense given the context
-   - Provide rich details about shared context and interaction style
+2. Analyze the persona's domain/profession and generate relevant CUSTOM FIELDS that go beyond the standard attributes
+3. If EXISTING PERSONAS are provided, analyze if this new persona has meaningful relationships with any of them
 
 Return a JSON object with the following structure (use null for any fields you can't determine):
 {{
@@ -399,6 +397,38 @@ Return a JSON object with the following structure (use null for any fields you c
     "tags": ["tag1", "tag2", "tag3"],
     "avatar_emoji": "A single emoji that best represents this persona (e.g., '👨‍💼' for business professional, '🔧' for engineer, '🎨' for creative)",
     "avatar_color": "A hex color code that suits their personality/role - choose from: #28A2AB (teal), #63A0DC (blue), #5C74AD (purple), #E56996 (raspberry), #FC7272 (pink), #FC9A65 (peach), #F39A41 (orange), #F3B441 (yellow), #28AB7D (green), #28AB94 (mint), #5C87AD (slate). AVOID #FF6B6B (coral - reserved for users)",
+    "custom_fields": {{
+        // ADAPTIVE CUSTOM FIELDS - Add domain-specific attributes here
+        // Examples based on persona type:
+        //
+        // For a COACH/CONSULTANT:
+        // "coaching_domains": ["Leadership Development", "Executive Presence", ...],
+        // "capabilities": ["1:1 coaching", "Workshop facilitation", ...],
+        // "education_credentials": ["PhD in Psychology", "ICF PCC Certified", ...],
+        // "accomplishments": ["500+ executives coached", "Keynote speaker", ...]
+        //
+        // For an ENGINEER:
+        // "technical_skills": ["Python", "Machine Learning", "System Design"],
+        // "projects": ["Built recommendation engine", "Led platform migration"],
+        // "certifications": ["AWS Solutions Architect", "Kubernetes Administrator"]
+        //
+        // For a PRODUCT MANAGER:
+        // "product_domains": ["B2B SaaS", "Mobile Apps", "Analytics"],
+        // "frameworks": ["Jobs-to-be-Done", "OKRs", "Dual-track Agile"],
+        // "launches": ["Led 3 successful 0-to-1 products", "Scaled product to 1M users"]
+        //
+        // For a SALES LEADER:
+        // "sales_expertise": ["Enterprise sales", "Account-based marketing", "Sales ops"],
+        // "industries_served": ["FinTech", "Healthcare SaaS", "E-commerce"],
+        // "track_record": ["$50M ARR growth", "Built team from 5 to 50"]
+        //
+        // INSTRUCTIONS:
+        // - Analyze the persona description and determine what custom fields make sense
+        // - Use clear, descriptive field names (e.g., "coaching_domains" not "domains")
+        // - Values can be strings, arrays of strings, or numbers depending on the field
+        // - Only add custom fields if they provide meaningful, domain-specific context
+        // - If the persona doesn't need custom fields, use an empty object {{}}
+    }},
     "suggested_relationships": [
         {{
             "persona_id": "UUID of related existing persona",
@@ -411,10 +441,11 @@ Return a JSON object with the following structure (use null for any fields you c
 }}
 
 IMPORTANT:
+- BE CREATIVE with custom_fields - add any domain-specific attributes that make this persona richer and more authentic
+- Custom fields should be structured (arrays or strings), not just free-form text
 - Only include suggested_relationships if there are meaningful connections
 - If no relationships make sense, use an empty array []
 - Ensure consistency with existing personas (same city, related industries, etc.)
-- Be specific and detailed in shared_context and interaction_style
 
 Provide ONLY the JSON object, no additional text."""
 
@@ -444,6 +475,14 @@ Provide ONLY the JSON object, no additional text."""
 
             data = json.loads(cleaned_response)
 
+            # DEBUG: Log raw AI response for debugging
+            print(f"[GEMINI AI] Raw response text length: {len(cleaned_response)} chars")
+            print(f"[GEMINI AI] Full AI JSON response:\n{json.dumps(data, indent=2)}")
+            print(f"[GEMINI AI] Raw JSON avatar fields - emoji: '{data.get('avatar_emoji')}', color: '{data.get('avatar_color')}'")
+            print(f"[GEMINI AI] Full parsed JSON keys: {list(data.keys())}")
+            print(f"[GEMINI AI] Custom fields extracted: {data.get('custom_fields', {})}")
+            print(f"[GEMINI AI] Custom fields type: {type(data.get('custom_fields'))}, keys: {list(data.get('custom_fields', {}).keys())}")
+
             # Parse suggested relationships
             suggested_relationships = []
             if "suggested_relationships" in data and data["suggested_relationships"]:
@@ -472,8 +511,13 @@ Provide ONLY the JSON object, no additional text."""
                 tags=data.get("tags", []),
                 avatar_emoji=data.get("avatar_emoji"),
                 avatar_color=data.get("avatar_color"),
+                custom_fields=data.get("custom_fields", {}),
                 suggested_relationships=suggested_relationships
             )
+
+            # DEBUG: Log PersonaEnrichment avatar values
+            print(f"[GEMINI AI] PersonaEnrichment created - emoji: '{enrichment.avatar_emoji}', color: '{enrichment.avatar_color}'")
+            print(f"[GEMINI AI] PersonaEnrichment.custom_fields: {enrichment.custom_fields}")
 
             return GeminiResult(success=True, data=enrichment)
 

@@ -114,9 +114,12 @@ def api_list():
         result = g.persona_service.get_personas(user_id)
 
     if result.success:
+        # Convert Persona objects to dicts for JSON serialization
+        personas = result.data.get("personas", [])
+        personas_dict = [p.to_dict() for p in personas]
         return jsonify({
             "success": True,
-            "personas": result.data.get("personas", [])
+            "personas": personas_dict
         })
     else:
         return jsonify({
@@ -206,6 +209,10 @@ def api_enrich():
 
         enrichment = enrichment_result.data
 
+        # DEBUG: Log enrichment data
+        print(f"[API ENRICH] Enrichment custom_fields: {enrichment.custom_fields}")
+        print(f"[API ENRICH] Custom fields count: {len(enrichment.custom_fields) if enrichment.custom_fields else 0}")
+
         # Convert enrichment to dict for JSON response
         return jsonify({
             "success": True,
@@ -220,6 +227,7 @@ def api_enrich():
                 "tools": enrichment.tools,
                 "quotes": enrichment.quotes,
                 "tags": enrichment.tags,
+                "custom_fields": enrichment.custom_fields,
                 "suggested_relationships": [
                     {
                         "persona_id": rel.persona_id,
@@ -261,6 +269,12 @@ def api_create():
         quotes = [q.strip() for q in data.get("quotes", []) if q.strip()]
         tags_str = data.get("tags", "")
         tags = [t.strip() for t in tags_str.split(",") if t.strip()] if isinstance(tags_str, str) else tags_str
+        avatar_emoji = data.get("avatar_emoji", "").strip() if data.get("avatar_emoji") else None
+        avatar_color = data.get("avatar_color", "").strip() if data.get("avatar_color") else None
+        custom_fields = data.get("custom_fields", {})
+
+        # DEBUG: Log avatar values from JSON
+        print(f"[API CREATE] Avatar from JSON - emoji: '{avatar_emoji}', color: '{avatar_color}'")
 
         if not name:
             return jsonify({
@@ -279,8 +293,14 @@ def api_create():
             behaviors=behaviors or None,
             tools=tools or None,
             quotes=quotes,
-            tags=tags
+            tags=tags,
+            avatar_emoji=avatar_emoji,
+            avatar_color=avatar_color,
+            custom_fields=custom_fields
         )
+
+        # DEBUG: Log enrichment avatar values
+        print(f"[API CREATE] PersonaEnrichment created - emoji: '{enrichment.avatar_emoji}', color: '{enrichment.avatar_color}'")
 
         # Save persona
         result = g.persona_service.create_persona(user_id, enrichment)
@@ -347,6 +367,12 @@ def api_update(persona_id):
         tags_str = data.get("tags", "")
         tags = [t.strip() for t in tags_str.split(",") if t.strip()] if isinstance(tags_str, str) else tags_str
         notes = data.get("notes", "").strip()
+        avatar_emoji = data.get("avatar_emoji", "").strip() if data.get("avatar_emoji") else None
+        avatar_color = data.get("avatar_color", "").strip() if data.get("avatar_color") else None
+        custom_fields = data.get("custom_fields", {})
+
+        # DEBUG: Log avatar values from JSON
+        print(f"[API UPDATE] Avatar from JSON - emoji: '{avatar_emoji}', color: '{avatar_color}'")
 
         if not name:
             return jsonify({
@@ -366,8 +392,14 @@ def api_update(persona_id):
             "tools": tools or None,
             "quotes": quotes,
             "tags": tags,
-            "notes": notes or None
+            "notes": notes or None,
+            "avatar_emoji": avatar_emoji,
+            "avatar_color": avatar_color,
+            "custom_fields": custom_fields
         }
+
+        # DEBUG: Log updates dict with avatar values
+        print(f"[API UPDATE] Updates dict - emoji: '{updates['avatar_emoji']}', color: '{updates['avatar_color']}'")
 
         result = g.persona_service.update_persona(persona_id, updates)
 
@@ -431,6 +463,10 @@ def create():
 
     enrichment = enrichment_result.data
 
+    # DEBUG: Log enrichment data before rendering template
+    print(f"[CREATE ROUTE] Rendering template with custom_fields: {enrichment.custom_fields}")
+    print(f"[CREATE ROUTE] Will show custom fields section: {bool(enrichment.custom_fields and len(enrichment.custom_fields) > 0)}")
+
     # Show enrichment for user editing (including suggested relationships)
     return render_template(
         "personas/create.html",
@@ -460,6 +496,9 @@ def save():
     avatar_emoji = request.form.get("avatar_emoji", "").strip()
     avatar_color = request.form.get("avatar_color", "").strip()
 
+    # DEBUG: Log avatar values from form
+    print(f"[PERSONA SAVE] Avatar extracted from form - emoji: '{avatar_emoji}', color: '{avatar_color}'")
+
     # Extract accepted relationships (checkboxes)
     accepted_rel_ids = request.form.getlist("relationships[]")
 
@@ -482,6 +521,9 @@ def save():
         avatar_emoji=avatar_emoji or None,
         avatar_color=avatar_color or None
     )
+
+    # DEBUG: Log enrichment avatar values
+    print(f"[PERSONA SAVE] PersonaEnrichment created - emoji: '{enrichment.avatar_emoji}', color: '{enrichment.avatar_color}'")
 
     # Save persona
     result = g.persona_service.create_persona(user_id, enrichment)
@@ -572,6 +614,11 @@ def edit(persona_id):
         return render_template("personas/edit.html", persona=persona)
 
     # Handle POST - update persona
+    # DEBUG: Log raw form values for avatar
+    raw_emoji = request.form.get("avatar_emoji", "")
+    raw_color = request.form.get("avatar_color", "")
+    print(f"[PERSONA EDIT] Raw avatar from form - emoji: '{raw_emoji}', color: '{raw_color}'")
+
     updates = {
         "name": request.form.get("name", "").strip(),
         "role": request.form.get("role", "").strip(),
@@ -587,6 +634,9 @@ def edit(persona_id):
         "avatar_emoji": request.form.get("avatar_emoji", "").strip() or None,
         "avatar_color": request.form.get("avatar_color", "").strip() or None
     }
+
+    # DEBUG: Log processed avatar values in updates dict
+    print(f"[PERSONA EDIT] Updates dict - emoji: '{updates['avatar_emoji']}', color: '{updates['avatar_color']}'")
 
     if not updates["name"]:
         flash("Persona name is required.", "error")

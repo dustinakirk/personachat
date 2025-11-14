@@ -44,9 +44,22 @@ class PersonaService:
                 "quotes": enrichment.quotes,
                 "tags": enrichment.tags,
                 "avatar_emoji": enrichment.avatar_emoji,
-                "avatar_color": enrichment.avatar_color
+                "avatar_color": enrichment.avatar_color,
+                "custom_fields": enrichment.custom_fields
             }
+
+            # DEBUG: Log avatar values before database insert
+            print(f"[PERSONA SERVICE] Before DB insert - emoji: '{data['avatar_emoji']}', color: '{data['avatar_color']}'")
+            print(f"[PERSONA SERVICE] Full data dict: {data}")
+
             result = self._client.table("personas").insert(data).execute()
+
+            # DEBUG: Log what was returned from database
+            if result.data:
+                returned_data = result.data[0] if result.data else {}
+                print(f"[PERSONA SERVICE] After DB insert - returned emoji: '{returned_data.get('avatar_emoji')}', color: '{returned_data.get('avatar_color')}'")
+            else:
+                print(f"[PERSONA SERVICE] No data returned from insert")
             return SupabaseResult(True, data=result.data[0] if result.data else {})
         except APIError as api_error:
             error_payload = api_error.json()
@@ -142,7 +155,16 @@ class PersonaService:
             if not updates:
                 return SupabaseResult(False, error="No updates provided")
 
+            # DEBUG: Log avatar values before update
+            print(f"[PERSONA SERVICE UPDATE] Before DB update - emoji: '{updates.get('avatar_emoji')}', color: '{updates.get('avatar_color')}'")
+
             result = self._client.table("personas").update(updates).eq("id", persona_id).execute()
+
+            # DEBUG: Log what was returned from database
+            if result.data:
+                returned_data = result.data[0] if result.data else {}
+                print(f"[PERSONA SERVICE UPDATE] After DB update - returned emoji: '{returned_data.get('avatar_emoji')}', color: '{returned_data.get('avatar_color')}'")
+
             return SupabaseResult(True, data=result.data[0] if result.data else {})
         except APIError as api_error:
             error_dict = api_error.json() if hasattr(api_error, 'json') else {}

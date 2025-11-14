@@ -1,5 +1,12 @@
 <div class="persona-card{% if created_persona_id == persona.id %} persona-card-new{% endif %}" data-persona-id="{{ persona.id }}" {% if created_persona_id == persona.id %}id="newly-created-persona"{% endif %}>
     <div class="persona-card-header">
+        <div class="persona-avatar{% if persona.avatar_emoji %} has-emoji{% endif %}" style="background-color: {{ persona.avatar_color or '#28A2AB' }}">
+            {% if persona.avatar_emoji %}
+                {{ persona.avatar_emoji }}
+            {% else %}
+                {{ persona.name[:2]|upper }}
+            {% endif %}
+        </div>
         <div class="persona-info">
             <h3>{{ persona.name }}</h3>
             <p class="persona-role">{{ persona.role or 'No role specified' }}</p>
@@ -72,8 +79,33 @@
 
 .persona-card-header {
     display: flex;
-    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
     margin-bottom: 1rem;
+}
+
+.persona-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: white;
+    text-transform: uppercase;
+}
+
+.persona-avatar.has-emoji {
+    font-size: 28px;
+    text-transform: none;
+}
+
+.persona-info {
+    flex: 1;
+    min-width: 0;
 }
 
 .persona-info h3 {
@@ -97,6 +129,7 @@
 .persona-actions {
     display: flex;
     gap: 0.5rem;
+    flex-shrink: 0;
 }
 
 .btn-icon {

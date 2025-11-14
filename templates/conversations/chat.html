@@ -60,6 +60,13 @@
                 {% if participants %}
                     {% for participant in participants %}
                     <div class="participant-chip" data-persona-id="{{ participant.id }}">
+                        <div class="participant-chip-avatar{% if participant.avatar_emoji %} has-emoji{% endif %}" style="background-color: {{ participant.avatar_color or get_avatar_color(participant.name, False) }}">
+                            {% if participant.avatar_emoji %}
+                                {{ participant.avatar_emoji }}
+                            {% else %}
+                                {{ get_initials(participant.name) }}
+                            {% endif %}
+                        </div>
                         <div class="participant-chip-content">
                             <span class="participant-chip-name">{{ participant.name }}</span>
                             {% if participant.role %}
@@ -128,7 +135,7 @@
 
                 {# Message with avatar #}
                 <div class="message {% if message.is_user_message %}user-message{% else %}persona-message{% endif %}">
-                    <div class="message-avatar" style="background-color: {{ message.avatar_color or get_avatar_color(message.speaker_name, message.is_user_message) }}">
+                    <div class="message-avatar{% if message.avatar_emoji %} has-emoji{% endif %}" style="background-color: {{ message.avatar_color or get_avatar_color(message.speaker_name, message.is_user_message) }}">
                         {% if message.avatar_emoji %}
                             {{ message.avatar_emoji }}
                         {% else %}
@@ -408,9 +415,10 @@ function addMessageToDOM(speakerName, speakerRole, content, isUser = false, pers
     const initials = getInitials(speakerName);
     const bgColor = avatarColor || getAvatarColor(speakerName, isUser);
     const avatarContent = avatarEmoji || initials;
+    const emojiClass = avatarEmoji ? ' has-emoji' : '';
 
     messageDiv.innerHTML = `
-        <div class="message-avatar" style="background-color: ${bgColor}">
+        <div class="message-avatar${emojiClass}" style="background-color: ${bgColor}">
             ${avatarContent}
         </div>
         <div class="message-bubble">
@@ -946,17 +954,26 @@ document.getElementById('personaEnrichmentForm').addEventListener('submit', asyn
 
             // Show success toast
             const action = isEditMode ? 'updated' : 'created';
-            showToast('success', `Persona "${result.data.name}" ${action} successfully!`);
 
-            // Update personas nav list
-            refreshPersonasNav();
+            // If editing an existing persona, reload the page to show updated avatars
+            if (isEditMode) {
+                showToast('success', `Persona "${result.data.name}" ${action} successfully! Refreshing...`);
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+            } else {
+                showToast('success', `Persona "${result.data.name}" ${action} successfully!`);
 
-            // If creating and in a conversation, optionally add to it
-            {% if conversation and conversation.get('id') %}
-            if (!isEditMode && confirm(`Add ${result.data.name} to this conversation?`)) {
-                await addParticipantById('{{ conversation.get('id', '') }}', result.data.id);
+                // Update personas nav list
+                refreshPersonasNav();
+
+                // If creating and in a conversation, optionally add to it
+                {% if conversation and conversation.get('id') %}
+                if (confirm(`Add ${result.data.name} to this conversation?`)) {
+                    await addParticipantById('{{ conversation.get('id', '') }}', result.data.id);
+                }
+                {% endif %}
             }
-            {% endif %}
         } else {
             errorEl.textContent = result.error || 'Failed to save persona.';
             errorEl.style.display = 'block';
