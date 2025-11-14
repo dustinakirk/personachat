@@ -89,15 +89,12 @@
                         style="margin-left: 8px;"
                     >+ Add</button>
                 {% else %}
-                    <div class="persona-selector" id="persona-selector">
-                        <input
-                            type="text"
-                            id="persona-search-input"
-                            placeholder="Type to search personas..."
-                            autocomplete="off"
-                        />
-                        <div class="persona-selector-dropdown" id="persona-dropdown" style="display: none;"></div>
-                    </div>
+                    <button
+                        id="add-persona-btn"
+                        class="btn-link"
+                        onclick="openPersonaSelectorDrawer()"
+                        style="margin-left: 8px;"
+                    >+ Add</button>
                 {% endif %}
                 </div>
             </div>
@@ -905,8 +902,11 @@ document.getElementById('personaEnrichmentForm').addEventListener('submit', asyn
         quotes: formData.getAll('quotes[]').filter(q => q.trim()),
         tags: formData.get('tags'),
         avatar_emoji: formData.get('avatar_emoji'),
-        avatar_color: formData.get('avatar_color')
+        avatar_color: formData.get('avatar_color'),
+        custom_fields: drawerCustomFieldsData
     };
+
+    console.log('[DRAWER] Submitting persona with custom_fields:', data.custom_fields);
 
     if (!data.name) {
         errorEl.textContent = 'Persona name is required.';
@@ -1023,6 +1023,193 @@ function populateEnrichmentForm(enrichment) {
             input.value = quote;
             quotesContainer.appendChild(input);
         });
+    }
+
+    // Populate custom fields
+    drawerCustomFieldsData = enrichment.custom_fields || {};
+    console.log('[DRAWER] Loaded custom fields:', drawerCustomFieldsData);
+    renderDrawerCustomFields();
+}
+
+// ========== Custom Fields Dynamic Editor (Drawer Version) ==========
+
+let drawerCustomFieldsData = {};
+
+function renderDrawerCustomFields() {
+    const container = document.getElementById('drawerCustomFieldsContainer');
+    if (!container) {
+        console.warn('[DRAWER] drawerCustomFieldsContainer not found');
+        return;
+    }
+
+    const section = document.getElementById('customFieldsSection');
+    const noFieldsMsg = container.querySelector('.no-custom-fields-message');
+    const fieldCount = Object.keys(drawerCustomFieldsData).length;
+
+    console.log('[DRAWER] Rendering custom fields, count:', fieldCount);
+
+    // Show/hide section based on whether we have fields
+    if (section) {
+        section.style.display = fieldCount > 0 ? 'block' : 'none';
+    }
+
+    // Show fallback message if no custom fields
+    if (fieldCount === 0) {
+        if (noFieldsMsg) noFieldsMsg.style.display = 'block';
+        return;
+    }
+
+    // Hide fallback message
+    if (noFieldsMsg) noFieldsMsg.style.display = 'none';
+
+    // Clear existing cards
+    const existingCards = container.querySelectorAll('.custom-field-card');
+    existingCards.forEach(card => card.remove());
+
+    // Render each custom field
+    for (const [fieldName, fieldValue] of Object.entries(drawerCustomFieldsData)) {
+        const fieldCard = createDrawerFieldCard(fieldName, fieldValue);
+        container.appendChild(fieldCard);
+    }
+
+    // Update hidden input
+    document.getElementById('drawerCustomFieldsData').value = JSON.stringify(drawerCustomFieldsData);
+}
+
+function createDrawerFieldCard(fieldName, fieldValue) {
+    const card = document.createElement('div');
+    card.className = 'custom-field-card';
+
+    const header = document.createElement('div');
+    header.className = 'custom-field-header';
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = formatFieldName(fieldName);
+    nameInput.className = 'custom-field-name-input';
+    nameInput.dataset.originalName = fieldName;
+    nameInput.onblur = (e) => renameDrawerField(e.target.dataset.originalName, e.target.value);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'btn-delete-field';
+    deleteBtn.textContent = '×';
+    deleteBtn.onclick = () => deleteDrawerField(fieldName);
+
+    header.appendChild(nameInput);
+    header.appendChild(deleteBtn);
+    card.appendChild(header);
+
+    const valuesContainer = document.createElement('div');
+    valuesContainer.className = 'custom-field-values';
+
+    if (Array.isArray(fieldValue)) {
+        fieldValue.forEach((value, index) => {
+            const itemDiv = createDrawerArrayItem(fieldName, value, index);
+            valuesContainer.appendChild(itemDiv);
+        });
+
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'btn-link';
+        addBtn.textContent = '+ Add Item';
+        addBtn.style.fontSize = '0.85rem';
+        addBtn.onclick = () => addDrawerArrayItem(fieldName);
+        valuesContainer.appendChild(addBtn);
+    } else {
+        const textarea = document.createElement('textarea');
+        textarea.style.width = '100%';
+        textarea.style.padding = '0.5rem';
+        textarea.style.background = 'var(--bg)';
+        textarea.style.border = '1px solid var(--border)';
+        textarea.style.borderRadius = '4px';
+        textarea.style.color = 'var(--text)';
+        textarea.style.fontSize = '0.9rem';
+        textarea.rows = 2;
+        textarea.value = fieldValue || '';
+        textarea.onblur = (e) => updateDrawerFieldValue(fieldName, e.target.value);
+        valuesContainer.appendChild(textarea);
+    }
+
+    card.appendChild(valuesContainer);
+    return card;
+}
+
+function createDrawerArrayItem(fieldName, value, index) {
+    const itemDiv = document.createElement('div');
+    itemDiv.className = 'custom-field-array-item';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.style.padding = '0.5rem';
+    input.style.background = 'var(--bg)';
+    input.style.border = '1px solid var(--border)';
+    input.style.borderRadius = '4px';
+    input.style.color = 'var(--text)';
+    input.style.fontSize = '0.9rem';
+    input.value = value || '';
+    input.onblur = (e) => updateDrawerArrayItem(fieldName, index, e.target.value);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn-remove-item';
+    removeBtn.textContent = '×';
+    removeBtn.onclick = () => removeDrawerArrayItem(fieldName, index);
+
+    itemDiv.appendChild(input);
+    itemDiv.appendChild(removeBtn);
+    return itemDiv;
+}
+
+function formatFieldName(fieldName) {
+    return fieldName.split('_').map(word =>
+        word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ');
+}
+
+function unformatFieldName(displayName) {
+    return displayName.toLowerCase().replace(/\s+/g, '_');
+}
+
+function renameDrawerField(oldName, newDisplayName) {
+    const newName = unformatFieldName(newDisplayName);
+    if (newName !== oldName && !drawerCustomFieldsData[newName]) {
+        drawerCustomFieldsData[newName] = drawerCustomFieldsData[oldName];
+        delete drawerCustomFieldsData[oldName];
+        renderDrawerCustomFields();
+    }
+}
+
+function deleteDrawerField(fieldName) {
+    if (confirm(`Delete "${formatFieldName(fieldName)}"?`)) {
+        delete drawerCustomFieldsData[fieldName];
+        renderDrawerCustomFields();
+    }
+}
+
+function updateDrawerFieldValue(fieldName, newValue) {
+    drawerCustomFieldsData[fieldName] = newValue;
+    document.getElementById('drawerCustomFieldsData').value = JSON.stringify(drawerCustomFieldsData);
+}
+
+function updateDrawerArrayItem(fieldName, index, newValue) {
+    if (Array.isArray(drawerCustomFieldsData[fieldName])) {
+        drawerCustomFieldsData[fieldName][index] = newValue;
+        document.getElementById('drawerCustomFieldsData').value = JSON.stringify(drawerCustomFieldsData);
+    }
+}
+
+function addDrawerArrayItem(fieldName) {
+    if (Array.isArray(drawerCustomFieldsData[fieldName])) {
+        drawerCustomFieldsData[fieldName].push('');
+        renderDrawerCustomFields();
+    }
+}
+
+function removeDrawerArrayItem(fieldName, index) {
+    if (Array.isArray(drawerCustomFieldsData[fieldName])) {
+        drawerCustomFieldsData[fieldName].splice(index, 1);
+        renderDrawerCustomFields();
     }
 }
 

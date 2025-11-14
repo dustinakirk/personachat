@@ -74,6 +74,40 @@ def create():
         return redirect(url_for("conversations.create"))
 
 
+@conversations_bp.route("/create_with_participants", methods=["POST"])
+@login_required
+@requires_services
+def create_with_participants():
+    """Create a new conversation with selected participants (used when no conversation ID exists yet)"""
+    user_id = session["user"]["id"]
+
+    # Get participant IDs from request
+    participant_ids = request.json.get("participant_ids", []) if request.is_json else request.form.getlist("participant_ids")
+
+    if not participant_ids or len(participant_ids) == 0:
+        return jsonify({"success": False, "error": "Please select at least one persona"}), 400
+
+    if len(participant_ids) > 5:
+        return jsonify({"success": False, "error": "Please select no more than 5 personas"}), 400
+
+    # Create conversation
+    result = g.conversation_service.create_conversation(
+        user_id=user_id,
+        title="New Conversation",
+        participant_ids=participant_ids,
+    )
+
+    if result.success:
+        conversation_id = result.data.get("id")
+        return jsonify({
+            "success": True,
+            "conversation_id": conversation_id,
+            "redirect_url": url_for("conversations.chat", conversation_id=conversation_id)
+        })
+    else:
+        return jsonify({"success": False, "error": result.error}), 500
+
+
 @conversations_bp.route("/quick-start/<persona_id>", methods=["GET", "POST"])
 @login_required
 @requires_services

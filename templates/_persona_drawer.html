@@ -187,14 +187,44 @@ async function addSelectedPersonas() {
   console.log('[Persona Drawer] Attempting to add personas. Conversation ID:', conversationId);
   console.log('[Persona Drawer] Conversation ID type:', typeof conversationId);
 
+  // If no conversation ID exists, create a new conversation with the selected personas
   if (!conversationId || conversationId === '') {
-    console.error('[Persona Drawer] Cannot add personas - invalid conversation ID:', conversationId);
-    alert('Error: No conversation ID found. Please refresh the page and try again.');
-    closePersonaSelectorDrawer();
+    console.log('[Persona Drawer] No conversation ID - creating new conversation with selected personas');
+
+    try {
+      const response = await fetch('/conversations/create_with_participants', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          participant_ids: Array.from(selectedPersonaIds)
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Clear selection
+        selectedPersonaIds.clear();
+
+        // Close drawer
+        closePersonaSelectorDrawer();
+
+        // Redirect to the new conversation
+        window.location.href = data.redirect_url;
+      } else {
+        console.error('[Persona Drawer] Failed to create conversation:', data.error);
+        alert(`Failed to create conversation: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('[Persona Drawer] Error creating conversation:', error);
+      alert('Failed to create conversation. Please try again.');
+    }
     return;
   }
 
-  // Add each selected persona
+  // Conversation ID exists - add personas to existing conversation
   const promises = Array.from(selectedPersonaIds).map(personaId => {
     const formData = new FormData();
     formData.append('persona_id', personaId);

@@ -2194,3 +2194,91 @@ textarea {
     padding-right: 16px;
   }
 }
+
+/* Custom Fields in Drawer */
+.custom-fields-section {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.custom-field-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.custom-field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.custom-field-name-input {
+  flex: 1;
+  font-weight: 600;
+  font-size: 0.95rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  color: var(--text);
+}
+
+.custom-field-name-input:hover {
+  border-color: var(--border);
+}
+
+.custom-field-name-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+.btn-delete-field {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0 0.5rem;
+}
+
+.btn-delete-field:hover {
+  color: #FC7272;
+}
+
+.custom-field-values {
+  margin-left: 0.5rem;
+}
+
+.custom-field-array-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.custom-field-array-item input {
+  flex: 1;
+}
+
+.btn-remove-item {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.btn-remove-item:hover {
+  border-color: #FC7272;
+  color: #FC7272;
+}

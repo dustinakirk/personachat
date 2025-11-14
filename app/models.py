@@ -10,6 +10,33 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 
+def _parse_timestamp(timestamp_str: Optional[str]) -> Optional[datetime]:
+    """Parse ISO 8601 timestamp string from Supabase to datetime object
+
+    Handles variable-length microseconds (e.g., '2025-11-13T20:45:25.57284+00:00')
+    by padding to 6 digits as required by Python's fromisoformat().
+    """
+    if not timestamp_str:
+        return None
+    if isinstance(timestamp_str, datetime):
+        return timestamp_str
+
+    # Handle ISO 8601 with 'Z' timezone indicator
+    timestamp_str = timestamp_str.replace('Z', '+00:00')
+
+    # Normalize microseconds to 6 digits for fromisoformat()
+    # Example: '2025-11-13T20:45:25.57284+00:00' -> '2025-11-13T20:45:25.572840+00:00'
+    import re
+    match = re.match(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d+)([\+\-]\d{2}:\d{2})', timestamp_str)
+    if match:
+        date_time, microseconds, timezone = match.groups()
+        # Pad microseconds to 6 digits (or truncate if longer)
+        microseconds = microseconds.ljust(6, '0')[:6]
+        timestamp_str = f"{date_time}.{microseconds}{timezone}"
+
+    return datetime.fromisoformat(timestamp_str)
+
+
 @dataclass
 class Persona:
     """An AI persona with rich profile information"""
@@ -78,8 +105,8 @@ class Persona:
             avatar_color=row.get('avatar_color'),
             custom_fields=row.get('custom_fields', {}),
             archived=row.get('archived', False),
-            created_at=row.get('created_at'),
-            updated_at=row.get('updated_at')
+            created_at=_parse_timestamp(row.get('created_at')),
+            updated_at=_parse_timestamp(row.get('updated_at'))
         )
 
 
@@ -158,8 +185,8 @@ class PersonaRelationship:
             shared_context=row.get('shared_context'),
             interaction_style=row.get('interaction_style'),
             notes=row.get('notes'),
-            created_at=row.get('created_at'),
-            updated_at=row.get('updated_at')
+            created_at=_parse_timestamp(row.get('created_at')),
+            updated_at=_parse_timestamp(row.get('updated_at'))
         )
 
     def to_dict(self):
