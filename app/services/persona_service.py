@@ -42,7 +42,9 @@ class PersonaService:
                 "behaviors": enrichment.behaviors,
                 "tools": enrichment.tools,
                 "quotes": enrichment.quotes,
-                "tags": enrichment.tags
+                "tags": enrichment.tags,
+                "avatar_emoji": enrichment.avatar_emoji,
+                "avatar_color": enrichment.avatar_color
             }
             result = self._client.table("personas").insert(data).execute()
             return SupabaseResult(True, data=result.data[0] if result.data else {})

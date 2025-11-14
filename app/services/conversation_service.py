@@ -408,7 +408,7 @@ class ConversationService:
             # Use join to fetch messages with persona details in a single query
             query = (
                 self._client.table("messages")
-                .select("*, personas(id, name, role)")
+                .select("*, personas(id, name, role, avatar_emoji, avatar_color)")
                 .eq("conversation_id", conversation_id)
             )
 

@@ -397,6 +397,8 @@ Return a JSON object with the following structure (use null for any fields you c
     "tools": "Tools, systems, or technologies they use",
     "quotes": ["Quote that captures their mindset", "Another representative quote"],
     "tags": ["tag1", "tag2", "tag3"],
+    "avatar_emoji": "A single emoji that best represents this persona (e.g., '👨‍💼' for business professional, '🔧' for engineer, '🎨' for creative)",
+    "avatar_color": "A hex color code that suits their personality/role - choose from: #28A2AB (teal), #63A0DC (blue), #5C74AD (purple), #E56996 (raspberry), #FC7272 (pink), #FC9A65 (peach), #F39A41 (orange), #F3B441 (yellow), #28AB7D (green), #28AB94 (mint), #5C87AD (slate). AVOID #FF6B6B (coral - reserved for users)",
     "suggested_relationships": [
         {{
             "persona_id": "UUID of related existing persona",
@@ -468,6 +470,8 @@ Provide ONLY the JSON object, no additional text."""
                 tools=data.get("tools"),
                 quotes=data.get("quotes", []),
                 tags=data.get("tags", []),
+                avatar_emoji=data.get("avatar_emoji"),
+                avatar_color=data.get("avatar_color"),
                 suggested_relationships=suggested_relationships
             )
 

@@ -1349,11 +1349,11 @@ textarea {
 .date-separator::after {
   content: '';
   position: absolute;
-  bottom: -8px;
   left: 0;
   right: 0;
   height: 1px;
   background: var(--color-border);
+  z-index: 0;
 }
 
 .date-pill {

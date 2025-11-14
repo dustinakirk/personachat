@@ -457,6 +457,8 @@ def save():
     tools = request.form.get("tools", "").strip()
     quotes = [q.strip() for q in request.form.getlist("quotes[]") if q.strip()]
     tags = [t.strip() for t in request.form.get("tags", "").split(",") if t.strip()]
+    avatar_emoji = request.form.get("avatar_emoji", "").strip()
+    avatar_color = request.form.get("avatar_color", "").strip()
 
     # Extract accepted relationships (checkboxes)
     accepted_rel_ids = request.form.getlist("relationships[]")
@@ -476,7 +478,9 @@ def save():
         behaviors=behaviors or None,
         tools=tools or None,
         quotes=quotes,
-        tags=tags
+        tags=tags,
+        avatar_emoji=avatar_emoji or None,
+        avatar_color=avatar_color or None
     )
 
     # Save persona
@@ -579,7 +583,9 @@ def edit(persona_id):
         "tools": request.form.get("tools", "").strip() or None,
         "quotes": [q.strip() for q in request.form.getlist("quotes[]") if q.strip()],
         "tags": [t.strip() for t in request.form.get("tags", "").split(",") if t.strip()],
-        "notes": request.form.get("notes", "").strip() or None
+        "notes": request.form.get("notes", "").strip() or None,
+        "avatar_emoji": request.form.get("avatar_emoji", "").strip() or None,
+        "avatar_color": request.form.get("avatar_color", "").strip() or None
     }
 
     if not updates["name"]:

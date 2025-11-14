@@ -199,4 +199,6 @@ class PersonaEnrichment:
     tools: Optional[str] = None
     quotes: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
+    avatar_emoji: Optional[str] = None
+    avatar_color: Optional[str] = None
     suggested_relationships: List[RelationshipSuggestion] = field(default_factory=list)
